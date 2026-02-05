@@ -88,12 +88,16 @@ jobs:
         shell: pwsh
         run: |
           python scripts/generate_icons.py
+          if (-not (Test-Path "packaging\\assets\\logo.ico")) { throw "logo.ico not found: packaging\\assets\\logo.ico" }
+          if ((Get-Item "packaging\\assets\\logo.ico").Length -le 0) { throw "logo.ico is empty: packaging\\assets\\logo.ico" }
 
       - name: Generate icons (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
+          test -s mac.png
           python scripts/generate_icons.py
+          test -s packaging/assets/logo.icns
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
@@ -138,6 +142,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          Set-Location $env:GITHUB_WORKSPACE
           Write-Host "GITHUB_SHA=$env:GITHUB_SHA"
           Write-Host "VERSION=$env:VERSION"
           Write-Host "WORKFLOW_REV=$env:WORKFLOW_REV"
@@ -161,7 +166,12 @@ jobs:
             Get-ChildItem -Path $d -Force -ErrorAction SilentlyContinue | Select-Object -First 50 | ForEach-Object { Write-Host (" - " + $_.FullName) }
           }
 
+          if (-not (Test-Path "packaging\\assets\\logo.ico")) { throw "logo.ico missing before makensis: packaging\\assets\\logo.ico" }
+          Write-Host "logo.ico: $((Get-Item "packaging\\assets\\logo.ico").FullName) size=$((Get-Item "packaging\\assets\\logo.ico").Length)"
+
           $outName = "DeepMatrix-$env:VERSION-Setup.exe"
+          $sourceDir = Join-Path (Join-Path $env:GITHUB_WORKSPACE "dist") "DeepMatrix"
+          $outPath = Join-Path $env:GITHUB_WORKSPACE $outName
           $makensisCandidates = @()
           if ($pf86) { $makensisCandidates += "$pf86\\NSIS\\Bin\\makensis.exe" }
           if ($pf86) { $makensisCandidates += "$pf86\\NSIS\\makensis.exe" }
@@ -198,9 +208,12 @@ jobs:
             throw "makensis.exe not found after installing NSIS"
           }
           Write-Host "Using makensis: $makensisPath"
-          & $makensisPath /DAPP_VERSION=$env:VERSION /DSOURCE_DIR=dist\\DeepMatrix /DOUTPUT_NAME=$outName installer\\windows\\DeepMatrix.nsi
+          $nsiPath = Join-Path $env:GITHUB_WORKSPACE "installer\\windows\\DeepMatrix.nsi"
+          if (-not (Test-Path $nsiPath)) { throw "NSIS script not found: $nsiPath" }
+          $iconPath = (Resolve-Path "packaging\\assets\\logo.ico").Path
+          & $makensisPath /DAPP_VERSION=$env:VERSION /DSOURCE_DIR="$sourceDir" /DOUTPUT_NAME="$outPath" /DICON_PATH="$iconPath" "$nsiPath"
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Move-Item $outName artifacts\\DeepMatrix-$env:VERSION-$env:RUNNER_OS-${{ matrix.platform }}.exe
+          Move-Item $outPath artifacts\\DeepMatrix-$env:VERSION-$env:RUNNER_OS-${{ matrix.platform }}.exe
 
       - name: Create DMG (macOS)
         if: runner.os == 'macOS'

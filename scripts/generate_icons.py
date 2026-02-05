@@ -81,9 +81,13 @@ def _write_icns(src_png: str, out_icns: str) -> None:
 
 def main() -> int:
     root = _repo_root()
-    src_png = os.path.join(root, "logo.png")
-    if not os.path.isfile(src_png):
-        raise FileNotFoundError(f"logo.png not found: {src_png}")
+    src_logo_png = os.path.join(root, "logo.png")
+    if not os.path.isfile(src_logo_png):
+        raise FileNotFoundError(f"logo.png not found: {src_logo_png}")
+
+    src_mac_png = os.path.join(root, "mac.png")
+    if sys.platform == "darwin" and not os.path.isfile(src_mac_png):
+        raise FileNotFoundError(f"mac.png not found: {src_mac_png}")
 
     assets_dir = os.path.join(root, "packaging", "assets")
     _ensure_dir(assets_dir)
@@ -91,8 +95,8 @@ def main() -> int:
     out_ico = os.path.join(assets_dir, "logo.ico")
     out_icns = os.path.join(assets_dir, "logo.icns")
 
-    _write_ico(src_png, out_ico)
-    _write_icns(src_png, out_icns)
+    _write_ico(src_logo_png, out_ico)
+    _write_icns(src_mac_png if sys.platform == "darwin" else src_logo_png, out_icns)
     return 0
 
 

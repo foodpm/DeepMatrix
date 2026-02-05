@@ -132,9 +132,10 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        raise SystemExit(main())
-    except BaseException as e:
+        exit_code = int(main())
+    except Exception as e:
         log_path = _write_fatal_log(e)
         sys.stderr.write(f"DeepMatrix 启动失败：{e}\n日志：{log_path}\n")
         _show_fatal_dialog(f"DeepMatrix 启动失败：{e}\n\n日志：{log_path}")
         raise SystemExit(1)
+    raise SystemExit(exit_code)
