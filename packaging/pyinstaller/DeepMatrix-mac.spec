@@ -1,8 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
-
-from PyInstaller.building.datastruct import Tree
 from PyInstaller.utils.hooks import collect_submodules
 
 repo_root = os.path.abspath(os.environ.get("GITHUB_WORKSPACE") or os.getcwd())
@@ -18,9 +16,9 @@ a = Analysis(
     pathex=[backend_dir],
     binaries=[],
     datas=[
-        Tree(os.path.join(backend_dir, "frontend"), prefix="frontend"),
-        Tree(os.path.join(backend_dir, "models"), prefix="models"),
-        Tree(os.path.join(backend_dir, "data"), prefix="data"),
+        (os.path.join(backend_dir, "frontend"), "frontend"),
+        (os.path.join(backend_dir, "models"), "models"),
+        (os.path.join(backend_dir, "data"), "data"),
         (os.path.join(backend_dir, "yolov8n.pt"), "."),
     ],
     hiddenimports=hiddenimports,
