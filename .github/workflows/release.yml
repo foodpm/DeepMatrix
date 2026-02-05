@@ -91,18 +91,38 @@ jobs:
         run: |
           choco install nsis -y
           $outName = "DeepMatrix-$env:VERSION-Setup.exe"
-          $makensisCandidates = @(
-            "$env:ProgramFiles(x86)\\NSIS\\makensis.exe",
-            "$env:ProgramFiles\\NSIS\\makensis.exe",
-            "$env:ChocolateyInstall\\bin\\makensis.exe",
-            "C:\\ProgramData\\chocolatey\\bin\\makensis.exe"
-          )
+          $makensisCandidates = @()
+          $makensisCandidates += "$env:ProgramFiles(x86)\\NSIS\\Bin\\makensis.exe"
+          $makensisCandidates += "$env:ProgramFiles\\NSIS\\Bin\\makensis.exe"
+          $makensisCandidates += "$env:ChocolateyInstall\\bin\\makensis.exe"
+          $makensisCandidates += "C:\\ProgramData\\chocolatey\\bin\\makensis.exe"
+          $makensisCandidates += "$env:ProgramFiles(x86)\\NSIS\\makensis.exe"
+          $makensisCandidates += "$env:ProgramFiles\\NSIS\\makensis.exe"
+
           $makensisPath = $makensisCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+
           if (-not $makensisPath) {
-            $cmd = Get-Command makensis -ErrorAction SilentlyContinue
+            $cmd = Get-Command makensis.exe -ErrorAction SilentlyContinue
             if ($cmd) { $makensisPath = $cmd.Source }
           }
-          if (-not $makensisPath) { throw "makensis.exe not found after installing NSIS" }
+
+          if (-not $makensisPath) {
+            $roots = @()
+            if ($env:ProgramFiles) { $roots += $env:ProgramFiles }
+            if ($env:ProgramFiles(x86)) { $roots += $env:ProgramFiles(x86) }
+            $roots += "C:\\Program Files (x86)"
+            $roots += "C:\\Program Files"
+            $roots = $roots | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+            foreach ($r in $roots) {
+              $hits = Get-ChildItem -Path $r -Filter makensis.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($hits) { $makensisPath = $hits.FullName; break }
+            }
+          }
+
+          if (-not $makensisPath) {
+            where.exe makensis.exe | Write-Host
+            throw "makensis.exe not found after installing NSIS"
+          }
           & $makensisPath /DAPP_VERSION=$env:VERSION /DSOURCE_DIR=dist\\DeepMatrix /DOUTPUT_NAME=$outName installer\\windows\\DeepMatrix.nsi
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           Move-Item $outName artifacts\\DeepMatrix-$env:VERSION-$env:RUNNER_OS-${{ matrix.platform }}.exe
