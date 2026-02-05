@@ -15,6 +15,11 @@
 
 Name "${APP_NAME} ${APP_VERSION}"
 OutFile "${OUTPUT_NAME}"
+!define ICON_PATH "packaging\\assets\\logo.ico"
+!define MUI_ICON "${ICON_PATH}"
+!define MUI_UNICON "${ICON_PATH}"
+Icon "${ICON_PATH}"
+UninstallIcon "${ICON_PATH}"
 InstallDir "$PROGRAMFILES\\${APP_NAME}"
 InstallDirRegKey HKCU "Software\\${APP_NAME}" ""
 RequestExecutionLevel admin
@@ -29,8 +34,8 @@ Section "Install"
   File /r "${SOURCE_DIR}\\*"
   WriteRegStr HKCU "Software\\${APP_NAME}" "" "$INSTDIR"
   CreateDirectory "$SMPROGRAMS\\${APP_NAME}"
-  CreateShortCut "$SMPROGRAMS\\${APP_NAME}\\${APP_NAME}.lnk" "$INSTDIR\\DeepMatrix.exe"
-  CreateShortCut "$DESKTOP\\${APP_NAME}.lnk" "$INSTDIR\\DeepMatrix.exe"
+  CreateShortCut "$SMPROGRAMS\\${APP_NAME}\\${APP_NAME}.lnk" "$INSTDIR\\DeepMatrix.exe" "" "$INSTDIR\\DeepMatrix.exe" 0
+  CreateShortCut "$DESKTOP\\${APP_NAME}.lnk" "$INSTDIR\\DeepMatrix.exe" "" "$INSTDIR\\DeepMatrix.exe" 0
   WriteUninstaller "$INSTDIR\\Uninstall.exe"
 SectionEnd
 

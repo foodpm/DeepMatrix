@@ -1,0 +1,16 @@
+{
+  "model_version_id": "2114ddb0-1",
+  "dataset_id": "2114ddb0",
+  "created_at": 1770276215,
+  "train_config": {
+    "dataset_id": "2114ddb0",
+    "model_version": "1",
+    "epochs": 4,
+    "batch": 8,
+    "imgsz": 640,
+    "device": "cpu",
+    "optimizer": "AdamW",
+    "lr0": 0.001,
+    "augment": true
+  }
+}

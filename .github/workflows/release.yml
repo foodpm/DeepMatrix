@@ -76,6 +76,18 @@ jobs:
           pip install --index-url https://download.pytorch.org/whl/cpu --upgrade --force-reinstall torch torchvision
           pip install pyinstaller
 
+      - name: Generate icons (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python scripts/generate_icons.py
+
+      - name: Generate icons (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          python scripts/generate_icons.py
+
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -87,6 +99,37 @@ jobs:
         shell: bash
         run: |
           pyinstaller --noconfirm --clean --distpath dist --workpath build packaging/pyinstaller/DeepMatrix-mac.spec
+
+      - name: Prepare signing keychain (macOS)
+        if: runner.os == 'macOS' && secrets.MACOS_CERT_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' && secrets.MACOS_KEYCHAIN_PASSWORD != '' && secrets.MACOS_CODESIGN_IDENTITY != ''
+        shell: bash
+        env:
+          MACOS_CERT_BASE64: ${{ secrets.MACOS_CERT_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          echo "$MACOS_CERT_BASE64" | base64 -D > "$CERT_PATH"
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -t 3600 -u "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Codesign app (macOS)
+        if: runner.os == 'macOS' && secrets.MACOS_CODESIGN_IDENTITY != '' && secrets.MACOS_CERT_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' && secrets.MACOS_KEYCHAIN_PASSWORD != ''
+        shell: bash
+        env:
+          CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: |
+          APP_PATH="dist/DeepMatrix.app"
+          ENTITLEMENTS="packaging/macos/entitlements.plist"
+          codesign --force --deep --options runtime --timestamp --entitlements "$ENTITLEMENTS" -s "$CODESIGN_IDENTITY" "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          spctl --assess --type execute --verbose=2 "$APP_PATH" || true
 
       - name: Create installer (Windows)
         if: runner.os == 'Windows'
@@ -163,8 +206,28 @@ jobs:
           chmod +x scripts/make_dmg.sh
           out="DeepMatrix-${VERSION}-${{ matrix.platform }}.dmg"
           ./scripts/make_dmg.sh "dist/DeepMatrix.app" "$out" "DeepMatrix ${VERSION}"
+          echo "DMG_OUT=$out" >> "$GITHUB_ENV"
+
+      - name: Notarize and staple DMG (macOS)
+        if: runner.os == 'macOS' && secrets.APPLE_NOTARY_KEY_BASE64 != '' && secrets.APPLE_NOTARY_KEY_ID != '' && secrets.APPLE_NOTARY_ISSUER_ID != ''
+        shell: bash
+        env:
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/notary-key.p8"
+          echo "$APPLE_NOTARY_KEY_BASE64" | base64 -D > "$KEY_PATH"
+          xcrun notarytool submit "$DMG_OUT" --key "$KEY_PATH" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
+          xcrun stapler staple "$DMG_OUT"
+          xcrun stapler validate "$DMG_OUT"
+
+      - name: Collect artifacts (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
           mkdir -p artifacts
-          mv "$out" "artifacts/$out"
+          mv "$DMG_OUT" "artifacts/$DMG_OUT"
 
       - uses: actions/upload-artifact@v4
         with:

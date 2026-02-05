@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>深维工坊 DeepMatrix</title>
+  <link rel="icon" href="/logo.png" />
+  <link rel="apple-touch-icon" href="/logo.png" />
   <!-- 引入样式 -->
   <link rel="stylesheet" href="libs/index.css" />
   <!-- 引入 Vue -->
@@ -46,8 +48,8 @@
       <div class="logo">
         <img
           alt="DeepMatrix"
-          style="width:28px; height:28px; display:block;"
-          src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%231890ff'/><stop offset='1' stop-color='%2366b1ff'/></linearGradient></defs><rect x='1' y='1' width='26' height='26' rx='8' fill='url(%23g)'/><path d='M9 8h4.2c3.1 0 5.3 2 5.3 5.5S16.3 19 13.2 19H9V8zm2.6 2.3v6.4h1.6c1.9 0 3.1-1.1 3.1-3.2 0-2.1-1.2-3.2-3.1-3.2h-1.6z' fill='white' opacity='0.95'/><path d='M18.8 20.2l-1.7 1.7-2.1-2.1-2.1 2.1-1.7-1.7 2.1-2.1-2.1-2.1 1.7-1.7 2.1 2.1 2.1-2.1 1.7 1.7-2.1 2.1 2.1 2.1z' fill='white' opacity='0.95'/></svg>"
+          style="width:36px; height:36px; display:block;"
+          src="/logo.png"
         />
         <div style="display:flex; flex-direction:column; line-height:18px;">
           <div style="font-size:18px;">深维工坊</div>
@@ -76,7 +78,7 @@
       <el-tabs v-model="activeTab" class="demo-tabs">
         
         <!-- 识别面板 -->
-        <el-tab-pane :label="t2('商品识别', 'Recognition')" name="inference">
+        <el-tab-pane :label="t2('物品识别', 'Recognition')" name="inference">
           <el-row :gutter="20">
             <el-col :span="8">
               <el-card>
@@ -87,7 +89,11 @@
                 </template>
                 <el-form label-position="top">
                   <el-form-item :label="t2('上传图片/视频', 'Upload Image/Video')">
-                    <input type="file" ref="fileInput" accept="image/*,video/*" @change="handleFileChange" style="width: 100%">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <el-button @click="triggerFilePick">{{ t2('选择文件', 'Choose File') }}</el-button>
+                      <div style="font-size:12px; color:#666; line-height:16px;">{{ inferSelectedName || t2('未选择文件', 'No file selected') }}</div>
+                    </div>
+                    <input type="file" ref="fileInput" accept="image/*,video/*" @change="handleFileChange" style="display:none">
                   </el-form-item>
                   <el-form-item :label="t2('置信度阈值', 'Confidence')">
                     <el-slider v-model="inferConfig.conf" :min="0" :max="1" :step="0.01" show-input></el-slider>
@@ -643,6 +649,7 @@
         // Inference State
         const fileInput = ref(null);
         const previewUrl = ref('');
+        const inferSelectedName = ref('');
         const inferConfig = reactive({ conf: 0.25, iou: 0.45, max_det: 100 });
         const inferResult = ref(null);
         const inferLoading = ref(false);
@@ -2789,12 +2796,18 @@
         };
 
         // ------------------ Inference ------------------
+        const triggerFilePick = () => {
+          try {
+            if (fileInput.value) fileInput.value.click();
+          } catch (e) {}
+        };
+
         const handleFileChange = (e) => {
-          const file = e.target.files[0];
-          if (file) {
-            previewUrl.value = URL.createObjectURL(file);
-            inferResult.value = null;
-          }
+          const file = e && e.target && e.target.files ? e.target.files[0] : null;
+          inferSelectedName.value = file ? (file.name || '') : '';
+          if (!file) return;
+          previewUrl.value = URL.createObjectURL(file);
+          inferResult.value = null;
         };
 
         const updatePreviewDisplaySize = () => {
@@ -3607,7 +3620,7 @@
         return {
           activeTab, uiLang, setUiLang, t2, healthStatus, lanUrl, copyText, appVersion,
           // Inference
-          fileInput, previewUrl, inferConfig, inferResult, inferLoading, runInference,
+          fileInput, previewUrl, inferSelectedName, triggerFilePick, inferConfig, inferResult, inferLoading, runInference,
           handleFileChange, displayBoxes, resultSummary, downloadJSON, getColor, inferModelTag,
           onImageLoad, previewImg, imgContainer,
           // Labeling

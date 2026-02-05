@@ -1,0 +1,16 @@
+{
+  "model_version_id": "d8300157-2",
+  "dataset_id": "d8300157",
+  "created_at": 1770275737,
+  "train_config": {
+    "dataset_id": "d8300157",
+    "model_version": "2",
+    "epochs": 2,
+    "batch": 8,
+    "imgsz": 640,
+    "device": "cpu",
+    "optimizer": "AdamW",
+    "lr0": 0.001,
+    "augment": true
+  }
+}

@@ -5,6 +5,7 @@ from PyInstaller.utils.hooks import collect_submodules
 
 repo_root = os.path.abspath(os.environ.get("GITHUB_WORKSPACE") or os.getcwd())
 backend_dir = os.path.join(repo_root, "backend")
+icon_ico = os.path.join(repo_root, "packaging", "assets", "logo.ico")
 
 block_cipher = None
 
@@ -17,6 +18,7 @@ a = Analysis(
     binaries=[],
     datas=[
         (os.path.join(backend_dir, "frontend"), "frontend"),
+        (os.path.join(repo_root, "logo.png"), "frontend"),
         (os.path.join(backend_dir, "models"), "models"),
         (os.path.join(backend_dir, "data"), "data"),
         (os.path.join(backend_dir, "yolov8n.pt"), "."),
@@ -41,6 +43,7 @@ exe = EXE(
     a.datas,
     [],
     name="DeepMatrix",
+    icon=icon_ico if os.path.isfile(icon_ico) else None,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

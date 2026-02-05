@@ -42,3 +42,5 @@ testds.zip
 trigger_*.py
 fix_*.py
 yolov8n.pt
+
+~\\AppData\\Local/

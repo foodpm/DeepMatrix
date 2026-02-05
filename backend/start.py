@@ -63,6 +63,36 @@ def _write_startup_error(text: str) -> str:
         pass
 
 
+def _get_local_ipv4s() -> list[str]:
+    ips: set[str] = set()
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            ips.add(ip)
+    except Exception:
+        pass
+
+    for target in ("8.8.8.8", "1.1.1.1"):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect((target, 80))
+            ips.add(s.getsockname()[0])
+            s.close()
+        except Exception:
+            pass
+
+    def _is_publicly_usable_ipv4(ip: str) -> bool:
+        if ip == "0.0.0.0":
+            return False
+        if ip.startswith("127."):
+            return False
+        if ip.startswith("169.254."):
+            return False
+        return True
+
+    return sorted(ip for ip in ips if _is_publicly_usable_ipv4(ip))
+
+
 def main():
     # Fix for Windows asyncio loop issue (WinError 10038)
     if sys.platform == 'win32':
@@ -82,6 +112,10 @@ def main():
             raise RuntimeError("no available port")
 
         url = f"http://127.0.0.1:{port}/"
+        urls = [url] + [f"http://{ip}:{port}/" for ip in _get_local_ipv4s()]
+        print("服务已启动，可用访问地址：")
+        for u in urls:
+            print(f"- {u}")
 
         def _open():
             time.sleep(0.8)

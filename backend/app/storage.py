@@ -18,7 +18,13 @@ def _bundle_dir() -> str:
     return os.path.dirname(os.path.dirname(__file__))
 
 def _app_data_dir() -> str:
-    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser(r"~\AppData\Local")
+    if sys.platform == "darwin":
+        base = os.path.expanduser("~/Library/Application Support")
+        return os.path.join(base, APP_NAME)
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser(r"~\AppData\Local")
+        return os.path.join(base, APP_NAME)
+    base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
     return os.path.join(base, APP_NAME)
 
 def _is_frozen() -> bool:

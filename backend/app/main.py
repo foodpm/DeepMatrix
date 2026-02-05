@@ -29,7 +29,7 @@ import uuid
 import json
 import random
 from fastapi import FastAPI, UploadFile, File, Form, WebSocket, WebSocketDisconnect, Request, Body
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import Response
 from typing import List, Optional, Dict, Any
@@ -939,22 +939,30 @@ def _build_fragment_annotation(
     }
 
 
-def _find_best_pt(version_id: str) -> Optional[str]:
-    best_candidates = []
+def _find_weight_pt(version_id: str, weight_name: str) -> Optional[str]:
+    candidates = []
     if not os.path.isdir(RUNS_DIR):
         return None
+    target = str(weight_name).lower()
     for root, _dirs, files in os.walk(RUNS_DIR):
+        if version_id not in root:
+            continue
         for name in files:
-            if name.lower() == "best.pt" and version_id in root:
-                p = os.path.join(root, name)
-                try:
-                    best_candidates.append((os.path.getmtime(p), p))
-                except Exception:
-                    best_candidates.append((0.0, p))
-    if not best_candidates:
+            if name.lower() != target:
+                continue
+            p = os.path.join(root, name)
+            try:
+                candidates.append((os.path.getmtime(p), p))
+            except Exception:
+                candidates.append((0.0, p))
+    if not candidates:
         return None
-    best_candidates.sort(key=lambda x: x[0], reverse=True)
-    return best_candidates[0][1]
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return candidates[0][1]
+
+
+def _find_best_pt(version_id: str) -> Optional[str]:
+    return _find_weight_pt(version_id, "best.pt")
 
 
 def _canonical_run_dir(version_id: str) -> str:
@@ -1245,16 +1253,20 @@ def _run_training(job_id: str, cfg: TrainConfig, model_version_id: str) -> None:
         )
 
         _sync_latest_run_artifacts_to_canonical(model_version_id)
-        best_pt = _find_best_pt(model_version_id)
-        if not best_pt or not os.path.isfile(best_pt):
-            raise FileNotFoundError("best.pt not found after training")
+        chosen_weight_name = "best.pt"
+        chosen_weight_path = _find_weight_pt(model_version_id, "best.pt")
+        if not chosen_weight_path or not os.path.isfile(chosen_weight_path):
+            chosen_weight_name = "last.pt"
+            chosen_weight_path = _find_weight_pt(model_version_id, "last.pt")
+        if not chosen_weight_path or not os.path.isfile(chosen_weight_path):
+            raise FileNotFoundError("best.pt/last.pt not found after training")
 
         target_dir = os.path.join(MODELS_DIR, model_version_id)
         _safe_mkdir(target_dir)
         target_pt = os.path.join(target_dir, "best.pt")
         import shutil
 
-        shutil.copy2(best_pt, target_pt)
+        shutil.copy2(chosen_weight_path, target_pt)
         meta_path = os.path.join(target_dir, "meta.json")
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(
@@ -1263,6 +1275,7 @@ def _run_training(job_id: str, cfg: TrainConfig, model_version_id: str) -> None:
                     "dataset_id": cfg.dataset_id,
                     "created_at": int(time.time()),
                     "train_config": cfg.model_dump(),
+                    "weights_source": chosen_weight_name,
                 },
                 f,
                 ensure_ascii=False,
@@ -2306,5 +2319,17 @@ if os.path.isdir(RUNS_DIR):
     app.mount("/runs", StaticFiles(directory=RUNS_DIR), name="runs")
 
 FRONTEND_DIR = os.path.join(BUNDLE_DIR, "frontend")
+@app.get("/logo.png")
+def get_logo_png():
+    candidates = [
+        os.path.join(FRONTEND_DIR, "logo.png"),
+        os.path.join(os.path.dirname(BUNDLE_DIR), "logo.png"),
+        os.path.join(BUNDLE_DIR, "logo.png"),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return FileResponse(path, media_type="image/png")
+    return JSONResponse(status_code=404, content={"error": "not found"})
+
 if os.path.isdir(FRONTEND_DIR):
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
