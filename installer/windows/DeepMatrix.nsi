@@ -15,7 +15,9 @@
 
 Name "${APP_NAME} ${APP_VERSION}"
 OutFile "${OUTPUT_NAME}"
-!define ICON_PATH "packaging\\assets\\logo.ico"
+!ifndef ICON_PATH
+!define ICON_PATH "${__FILEDIR__}\..\..\packaging\assets\logo.ico"
+!endif
 !define MUI_ICON "${ICON_PATH}"
 !define MUI_UNICON "${ICON_PATH}"
 Icon "${ICON_PATH}"
