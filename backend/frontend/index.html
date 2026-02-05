@@ -1,0 +1,3647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>深维工坊 DeepMatrix</title>
+  <!-- 引入样式 -->
+  <link rel="stylesheet" href="libs/index.css" />
+  <!-- 引入 Vue -->
+  <script src="libs/vue.global.js"></script>
+  <!-- 引入 Element Plus -->
+  <script src="libs/index.full.js"></script>
+  <!-- 引入 Element Plus Icons -->
+  <script src="libs/icons-vue.global.js"></script>
+  <script src="libs/qrcode.min.js"></script>
+  <!-- 引入 Annotorious -->
+  <link rel="stylesheet" href="annotorious.min.css">
+  <script src="annotorious.min.js"></script>
+  <script src="annotorious-selector-pack.min.js"></script>
+  <style>
+    body { margin: 0; background-color: #f0f2f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    .header { background: #fff; box-shadow: 0 2px 8px #f0f1f2; padding: 0 24px; height: 64px; display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-size: 20px; font-weight: bold; color: #1890ff; display: flex; align-items: center; gap: 10px; }
+    .main-content { padding: 24px; max-width: 1200px; margin: 0 auto; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; }
+    .label-right-panel { font-size: 13px; }
+    
+    /* 识别结果画框容器 */
+    .image-container { position: relative; display: inline-block; max-width: 100%; }
+    .image-container img { display: block; max-width: 100%; border-radius: 4px; }
+    .bbox { position: absolute; border: 2px solid #f5222d; background: rgba(245, 34, 45, 0.1); z-index: 10; cursor: pointer; }
+    .bbox-label { position: absolute; top: -20px; left: -2px; background: #f5222d; color: #fff; font-size: 12px; padding: 2px 4px; border-radius: 2px; white-space: nowrap; }
+    
+    /* 训练状态 */
+    .status-running { color: #1890ff; }
+    .status-completed { color: #52c41a; }
+    .status-failed { color: #f5222d; }
+
+    .a9s-selection-toolbar { display: none !important; }
+    .r6o-footer { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="header">
+      <div class="logo">
+        <img
+          alt="DeepMatrix"
+          style="width:28px; height:28px; display:block;"
+          src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%231890ff'/><stop offset='1' stop-color='%2366b1ff'/></linearGradient></defs><rect x='1' y='1' width='26' height='26' rx='8' fill='url(%23g)'/><path d='M9 8h4.2c3.1 0 5.3 2 5.3 5.5S16.3 19 13.2 19H9V8zm2.6 2.3v6.4h1.6c1.9 0 3.1-1.1 3.1-3.2 0-2.1-1.2-3.2-3.1-3.2h-1.6z' fill='white' opacity='0.95'/><path d='M18.8 20.2l-1.7 1.7-2.1-2.1-2.1 2.1-1.7-1.7 2.1-2.1-2.1-2.1 1.7-1.7 2.1 2.1 2.1-2.1 1.7 1.7-2.1 2.1 2.1 2.1z' fill='white' opacity='0.95'/></svg>"
+        />
+        <div style="display:flex; flex-direction:column; line-height:18px;">
+          <div style="font-size:18px;">深维工坊</div>
+          <div style="font-size:12px; font-weight:600; color:#4b93d6;">DeepMatrix</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <el-select v-model="uiLang" size="small" style="width:120px;" @change="setUiLang">
+          <el-option label="中文" value="zh"></el-option>
+          <el-option label="English" value="en"></el-option>
+        </el-select>
+        <el-tag type="info" effect="plain">{{ t2('版本', 'Version') }}：{{ appVersion }}</el-tag>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="font-size:14px; color:#666; line-height:24px;">{{ t2('访问地址', 'URL') }}</div>
+          <el-tag v-if="lanUrl" type="success" effect="plain" style="cursor:pointer;" @click="copyText(lanUrl)">{{ lanUrl }}</el-tag>
+          <el-tag v-else type="info" effect="plain">{{ t2('未获取', 'N/A') }}</el-tag>
+        </div>
+        <div>
+          <el-tag type="success" v-if="healthStatus">{{ t2('系统正常', 'Online') }}</el-tag>
+          <el-tag type="danger" v-else>{{ t2('连接断开', 'Offline') }}</el-tag>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <el-tabs v-model="activeTab" class="demo-tabs">
+        
+        <!-- 识别面板 -->
+        <el-tab-pane :label="t2('商品识别', 'Recognition')" name="inference">
+          <el-row :gutter="20">
+            <el-col :span="8">
+              <el-card>
+                <template #header>
+                  <div class="card-header">
+                    <span>{{ t2('配置与上传', 'Upload & Settings') }}</span>
+                  </div>
+                </template>
+                <el-form label-position="top">
+                  <el-form-item :label="t2('上传图片/视频', 'Upload Image/Video')">
+                    <input type="file" ref="fileInput" accept="image/*,video/*" @change="handleFileChange" style="width: 100%">
+                  </el-form-item>
+                  <el-form-item :label="t2('置信度阈值', 'Confidence')">
+                    <el-slider v-model="inferConfig.conf" :min="0" :max="1" :step="0.01" show-input></el-slider>
+                  </el-form-item>
+                  <el-form-item :label="t2('IoU 阈值', 'IoU')">
+                    <el-slider v-model="inferConfig.iou" :min="0" :max="1" :step="0.01" show-input></el-slider>
+                  </el-form-item>
+                  <el-form-item :label="t2('最大检测数', 'Max Detections')">
+                    <el-input-number v-model="inferConfig.max_det" :min="1" :max="1000"></el-input-number>
+                  </el-form-item>
+                  <el-button type="primary" @click="runInference" :loading="inferLoading" style="width: 100%">{{ t2('开始识别', 'Run') }}</el-button>
+                </el-form>
+              </el-card>
+              
+              <el-card style="margin-top: 20px" v-if="inferResult">
+                <template #header>
+                  <span>{{ t2('识别统计', 'Summary') }}</span>
+                </template>
+                <el-table :data="resultSummary" size="small">
+                  <el-table-column prop="class" :label="t2('类别', 'Class')"></el-table-column>
+                  <el-table-column prop="count" :label="t2('数量', 'Count')"></el-table-column>
+                </el-table>
+              </el-card>
+            </el-col>
+            
+            <el-col :span="16">
+              <el-card>
+                <template #header>
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <span>{{ t2('可视化结果', 'Preview') }}</span>
+                      <el-tag v-if="currentModel && currentModel.version_id" type="success" effect="plain">当前在线：{{ currentModel.version_id }}</el-tag>
+                      <el-tag v-else type="warning" effect="plain">当前在线：默认(yolov8n)</el-tag>
+                      <el-tag v-if="inferModelTag" type="info" effect="plain">{{ inferModelTag }}</el-tag>
+                    </div>
+                    <el-button link type="primary" v-if="inferResult" @click="downloadJSON">{{ t2('下载JSON', 'Download JSON') }}</el-button>
+                  </div>
+                </template>
+                <div class="image-container" v-if="previewUrl" ref="imgContainer">
+                  <img :src="previewUrl" @load="onImageLoad" ref="previewImg">
+                  <div v-for="(box, idx) in displayBoxes" :key="idx" 
+                       class="bbox"
+                       :style="{
+                         left: box.x + 'px',
+                         top: box.y + 'px',
+                         width: box.w + 'px',
+                         height: box.h + 'px',
+                         borderColor: getColor(box.cls)
+                       }">
+                    <div class="bbox-label" :style="{ backgroundColor: getColor(box.cls) }">
+                      {{ box.label }} {{ box.conf }}
+                    </div>
+                  </div>
+                </div>
+                <el-empty v-else :description="t2('请上传图片进行识别', 'Upload an image to start')"></el-empty>
+              </el-card>
+            </el-col>
+          </el-row>
+        </el-tab-pane>
+
+        <!-- 数据集管理 -->
+        <el-tab-pane :label="t2('数据集管理', 'Datasets')" name="datasets">
+          <el-card>
+            <template #header>
+              <div class="card-header">
+                <span>{{ t2('数据集列表', 'Dataset List') }}</span>
+                <div>
+                    <el-button type="success" @click="showCreateDatasetDialog">{{ t2('新建数据集', 'New Dataset') }}</el-button>
+                    <el-button type="primary" @click="triggerDatasetUpload">{{ t2('上传数据集 (Zip)', 'Upload Dataset (Zip)') }}</el-button>
+                </div>
+                <input type="file" ref="datasetInput" accept=".zip" style="display:none" @change="uploadDataset">
+              </div>
+            </template>
+            <el-table :data="datasets" style="width: 100%" v-loading="loadingDatasets">
+              <el-table-column prop="id" label="ID" width="120"></el-table-column>
+              <el-table-column prop="created_at" :label="t2('添加时间', 'Created At')" width="180">
+                <template #default="scope">{{ formatDate(scope.row.created_at) }}</template>
+              </el-table-column>
+              <el-table-column prop="path" :label="t2('路径', 'Path')"></el-table-column>
+              <el-table-column :label="t2('校验状态', 'Valid')">
+                <template #default="scope">
+                  <el-tag v-if="scope.row.valid" type="success">{{ t2('有效', 'Yes') }}</el-tag>
+                  <el-tag v-else type="danger">{{ t2('无效', 'No') }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column :label="t2('操作', 'Actions')">
+                <template #default="scope">
+                  <el-button size="small" @click="validateDataset(scope.row.id)">{{ t2('重新校验', 'Validate') }}</el-button>
+                  <el-button size="small" @click="openDatasetClassManager(scope.row.id)">{{ t2('类别管理', 'Classes') }}</el-button>
+                  <el-button size="small" type="danger" @click="deleteDataset(scope.row.id)">{{ t2('删除', 'Delete') }}</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
+
+          <el-dialog v-model="datasetClassDialog.visible" :title="`${t2('类别管理', 'Class Manager')} - ${datasetClassDialog.dataset_id || ''}`" width="720px" append-to-body>
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom: 12px;">
+              <el-input v-model="datasetClassDialog.new_name" :placeholder="t2('新增类别名称', 'New class name')" style="flex:1"></el-input>
+              <el-button type="primary" @click="addDatasetClass" :disabled="!datasetClassDialog.dataset_id">{{ t2('新增', 'Add') }}</el-button>
+              <el-button @click="refreshDatasetClassManager" :disabled="!datasetClassDialog.dataset_id">{{ t2('刷新', 'Refresh') }}</el-button>
+            </div>
+            <el-table :data="datasetClassDialog.items" style="width:100%" height="420" v-loading="datasetClassDialog.loading">
+              <el-table-column prop="id" label="ID" width="80"></el-table-column>
+              <el-table-column prop="name" :label="t2('名称', 'Name')"></el-table-column>
+              <el-table-column :label="t2('状态', 'Status')" width="120">
+                <template #default="scope">
+                  <el-tag v-if="scope.row.deleted" type="info">{{ t2('已删除', 'Deleted') }}</el-tag>
+                  <el-tag v-else type="success">{{ t2('正常', 'Active') }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="updated_at" :label="t2('更新时间', 'Updated At')" width="180">
+                <template #default="scope">{{ formatDate(scope.row.updated_at) }}</template>
+              </el-table-column>
+              <el-table-column :label="t2('操作', 'Actions')" width="200">
+                <template #default="scope">
+                  <el-button size="small" @click="renameDatasetClass(scope.row)">{{ t2('改名', 'Rename') }}</el-button>
+                  <el-button size="small" type="danger" @click="deleteDatasetClass(scope.row)" :disabled="scope.row.deleted">{{ t2('删除', 'Delete') }}</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-dialog>
+
+          <el-dialog v-model="createDatasetVisible" :title="t2('新建数据集', 'New Dataset')" width="500px" append-to-body>
+            <el-form :model="createDatasetForm" :label-width="t2('100px', '120px')">
+                <el-form-item :label="t2('数据集ID', 'Dataset ID')">
+                    <el-input v-model="createDatasetForm.dataset_id" :placeholder="t2('如: dataset_01', 'e.g. dataset_01')"></el-input>
+                </el-form-item>
+                <el-form-item :label="t2('验证集比例', 'Val Split')">
+                    <el-slider v-model="createDatasetForm.val_split" :min="0" :max="0.5" :step="0.05" show-input></el-slider>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="createDatasetVisible = false">{{ t2('取消', 'Cancel') }}</el-button>
+                <el-button type="primary" @click="createDatasetSubmit">{{ t2('创建', 'Create') }}</el-button>
+            </template>
+          </el-dialog>
+        </el-tab-pane>
+
+        <!-- 数据标注 -->
+        <el-tab-pane :label="t2('数据标注', 'Labeling')" name="labeling">
+          <div style="display:flex; height: calc(100vh - 150px); flex-direction: column;">
+             <!-- Top Bar -->
+             <div style="background:#fff; padding:10px; border-bottom:1px solid #eee; display:flex; align-items:center; gap:10px;">
+                <el-tag v-if="labelConfig.dataset_id" type="info" effect="plain">{{ t2('数据集', 'Dataset') }}: {{ labelConfig.dataset_id }}</el-tag>
+                <el-tag v-if="currentLabelImage" type="success" effect="plain">{{ t2('当前', 'Current') }}: {{ currentLabelImage.name }}</el-tag>
+                <div style="flex:1"></div>
+                <el-badge :is-dot="true" type="danger" :hidden="!labelState.dirty">
+                  <el-button type="success" @click="saveLabeling" :loading="labelState.saving" :disabled="!currentLabelImage || labelState.saving">{{ t2('保存标注', 'Save') }} (S)</el-button>
+                </el-badge>
+             </div>
+             
+             <!-- Main Area -->
+             <div style="flex:1; display:flex; overflow:hidden;">
+                <!-- Canvas -->
+                <div ref="labelCanvasRef" style="flex:1; background:#f0f0f0; display:flex; justify-content:center; align-items:center; position:relative; overflow:auto;">
+                    <template v-if="labelImageSrc">
+                      <img :src="labelImageSrc" ref="annoImg" id="anno-img" :style="annoImgStyle" @load="onAnnoImgLoad">
+                      <div v-if="classOverlay.visible"
+                           :style="{
+                             position: 'absolute',
+                             left: classOverlay.left + 'px',
+                             top: classOverlay.top + 'px',
+                             zIndex: 9998,
+                             background: 'rgba(255,255,255,0.78)',
+                             padding: '6px 8px',
+                             borderRadius: '8px',
+                             display: 'flex',
+                             flexWrap: 'wrap',
+                             gap: '6px',
+                             alignItems: 'center',
+                             pointerEvents: 'none'
+                           }">
+                        <el-tag v-for="c in currentLabelImageClasses" :key="c" size="small">{{ c }}</el-tag>
+                      </div>
+                      <div v-if="deleteOverlay.visible" data-anno-aux="1"
+                           :style="{
+                              position: 'absolute',
+                              left: deleteOverlay.left + 'px',
+                              top: deleteOverlay.top + 'px',
+                              zIndex: 9999
+                           }">
+                        <el-button circle size="small" type="danger" data-anno-aux="1"
+                                   @mousedown.stop
+                                   @click.stop.prevent="deleteSelectedAnnotation"
+                                   style="width:24px; height:24px; padding:0; box-shadow:0 2px 10px rgba(0,0,0,0.18);">
+                          <el-icon><Delete /></el-icon>
+                        </el-button>
+                      </div>
+                    </template>
+                    <el-empty v-else :description="t2('请选择数据集并导入图片', 'Select a dataset and import images')"></el-empty>
+                </div>
+                <!-- Right Panel -->
+                <div class="label-right-panel" style="width:320px; background:#fff; border-left:1px solid #eee; display:flex; flex-direction:column;">
+                  <div style="padding:10px; border-bottom:1px solid #f0f0f0; display:flex; flex-direction:column; gap:10px;">
+                    <el-select v-model="labelConfig.dataset_id" size="small" :placeholder="t2('选择数据集', 'Select dataset')" style="width:100%" @change="onLabelDatasetChange">
+                      <el-option v-for="d in datasets" :key="d.id" :label="d.id" :value="d.id"></el-option>
+                    </el-select>
+                    <el-input v-model="labelUi.classSearch" :placeholder="t2('搜索类别', 'Search classes')" clearable size="small"></el-input>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <el-input v-model="labelConfig.new_class_name" :placeholder="t2('新类别', 'New class')" size="small"></el-input>
+                      <el-button size="small" @click="addNewClass" :disabled="!labelConfig.dataset_id">{{ t2('添加', 'Add') }}</el-button>
+                    </div>
+                  </div>
+                  <div style="flex:1; overflow:auto; padding:10px;">
+                    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                      <el-button
+                        v-for="opt in filteredClassOptions"
+                        :key="opt.id"
+                        size="small"
+                        plain
+                        :type="Number(opt.id) === Number(labelConfig.current_class_id) ? 'primary' : 'default'"
+                        @click="selectLabelClass(opt.id)"
+                        :disabled="!currentLabelImage || labelState.saving"
+                      >{{ opt.name }}</el-button>
+                    </div>
+                    <el-empty v-if="labelConfig.dataset_id && filteredClassOptions.length === 0" :description="t2('无匹配类别', 'No matches')"></el-empty>
+                  </div>
+                </div>
+             </div>
+             
+             <!-- Bottom Image Strip -->
+             <div style="height:156px; background:#fff; border-top:1px solid #ddd; display:flex; flex-direction:column;">
+             <div style="height:36px; display:flex; align-items:center; padding:0 10px; border-bottom:1px solid #f0f0f0; gap:8px;">
+                <el-tag v-if="labelConfig.dataset_id" type="info" effect="plain">
+                  {{ t2('已标注', 'Labeled') }} {{ labelImagesLabeledCount }}/{{ labelImagesTotalCount }} ({{ labelImagesProgressPercent }}%)
+                </el-tag>
+                <el-button size="small" @click="refreshLabelImages" :disabled="!labelConfig.dataset_id || labelState.saving">{{ t2('刷新', 'Refresh') }}</el-button>
+                <el-button type="primary" size="small" @click="triggerImportImages" :disabled="!labelConfig.dataset_id">{{ t2('导入图片', 'Import') }}</el-button>
+                <input type="file" ref="importInput" multiple accept="image/*" style="display:none" @change="importImages">
+                <el-button size="small" @click="openMobileUpload" :disabled="!labelConfig.dataset_id">{{ t2('手机传图', 'Mobile Upload') }}</el-button>
+                <el-button type="danger" size="small" @click="deleteCurrentLabelImage" :disabled="!currentLabelImage || labelState.saving">{{ t2('删除当前图片', 'Delete Image') }}</el-button>
+                <div style="flex:1"></div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <el-input-number v-model="labelView.zoom" :min="20" :max="300" :step="10" size="small" controls-position="right" style="width:120px;"></el-input-number>
+                  <span style="color:#666; font-size:12px;">%</span>
+                </div>
+             </div>
+             <div ref="bottomStripRef" style="height:120px; display:flex; overflow-x:auto; padding:10px; align-items:center; gap:10px;">
+                <div v-for="img in labelImages" :key="thumbKey(img)" 
+                     @click="gotoLabelImage(img)"
+                     :data-thumb-key="thumbKey(img)"
+                     :style="{
+                        minWidth: '100px', maxWidth: '100px', height: '100px', 
+                        border: currentLabelImage && currentLabelImage.name === img.name && currentLabelImage.subset === img.subset ? '2px solid #1890ff' : '1px solid #eee',
+                        borderRadius: '4px', cursor: 'pointer', position: 'relative', display: 'flex', flexDirection: 'column'
+                     }">
+                     <div style="flex:1; background:#f5f5f5; display:flex; justify-content:center; align-items:center; overflow:hidden; position:relative;">
+                        <img :src="img.url" style="max-width:100%; max-height:100%;" loading="lazy" @load="onThumbLoad(img, $event)">
+                        <div v-if="img.labeled" style="position:absolute; inset:0; background:rgba(0,0,0,0.18);"></div>
+                        <div v-if="img.labeled" style="position:absolute; top:4px; right:4px; width:18px; height:18px; border-radius:3px; background:#2ecc71; color:#fff; font-size:14px; line-height:18px; text-align:center; font-weight:700;">✓</div>
+                        <div v-if="img.boxes && (img._thumb || (img.w && img.h))" style="position:absolute; inset:0;">
+                          <div v-for="(b, bi) in img.boxes" :key="bi"
+                               :style="thumbBoxStyle(img, b)"></div>
+                        </div>
+                     </div>
+                     <div style="height:20px; font-size:10px; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:#fff; padding:0 2px;">
+                        {{ img.name }}
+                     </div>
+                </div>
+                <div v-if="labelImages.length === 0 && labelConfig.dataset_id" style="color:#999; padding:20px;">
+                    {{ t2('暂无图片，请点击上方导入', 'No images. Click Import above.') }}
+                </div>
+             </div>
+             </div>
+
+             <el-dialog v-model="mobileUploadVisible" :title="t2('手机传图', 'Mobile Upload')" width="520px" append-to-body :z-index="30000">
+               <div style="display:flex; gap:16px; align-items:flex-start;">
+                 <div ref="mobileQrRef" style="width:200px; height:200px; background:#fff;"></div>
+                 <div style="flex:1; display:flex; flex-direction:column; gap:10px;">
+                   <div style="font-size:12px; color:#666; line-height:18px;">
+                     {{ t2('手机扫码打开拍照页面，拍照后会直接上传到当前数据集；手机本身不会保存图片到本地。', 'Scan to open the camera page. Photos upload directly to the dataset and are not saved locally.') }}
+                   </div>
+                   <el-input type="textarea" :rows="4" :model-value="mobileUploadUrl" readonly></el-input>
+                   <div style="display:flex; gap:10px; align-items:center;">
+                     <el-button size="small" @click="copyText(mobileUploadUrl)" :disabled="!mobileUploadUrl">{{ t2('复制链接', 'Copy') }}</el-button>
+                     <el-button size="small" @click="refreshMobileQr" :disabled="!labelConfig.dataset_id">{{ t2('刷新二维码', 'Refresh QR') }}</el-button>
+                   </div>
+                 </div>
+               </div>
+             </el-dialog>
+          </div>
+        </el-tab-pane>
+
+        <!-- 训练任务 -->
+        <el-tab-pane :label="t2('模型训练', 'Training')" name="training">
+          <el-row :gutter="20">
+            <el-col :span="8">
+              <el-card>
+                <template #header><span>{{ t2('新建训练任务', 'New Job') }}</span></template>
+                <el-form label-position="top">
+                  <el-form-item :label="t2('选择数据集', 'Dataset')">
+                    <el-select v-model="trainConfig.dataset_id" size="small" :placeholder="t2('请选择', 'Select')" style="width:100%">
+                      <el-option v-for="d in validDatasets" :key="d.id" :label="d.id" :value="d.id"></el-option>
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item :label="t2('模型版本号 (可选)', 'Version ID (Optional)')">
+                    <el-input v-model="trainConfig.model_version" placeholder="如: v1 / exp01" clearable></el-input>
+                  </el-form-item>
+                  <el-form-item :label="t2('训练轮数 (Epochs)', 'Epochs')">
+                    <el-input-number v-model="trainConfig.epochs" :min="1" :max="1000"></el-input-number>
+                  </el-form-item>
+                  <el-form-item :label="t2('批次大小 (Batch Size)', 'Batch Size')">
+                    <el-select v-model="trainConfig.batch">
+                      <el-option :value="8" label="8"></el-option>
+                      <el-option :value="16" label="16"></el-option>
+                      <el-option :value="32" label="32"></el-option>
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item :label="t2('图片尺寸 (Image Size)', 'Image Size')">
+                    <el-input-number v-model="trainConfig.imgsz" :step="32" :min="320"></el-input-number>
+                  </el-form-item>
+                  <el-form-item :label="t2('训练设备 (Device)', 'Device')">
+                    <el-select v-model="trainConfig.device" :placeholder="t2('请选择设备', 'Select device')">
+                      <el-option label="CPU" value="cpu"></el-option>
+                      <el-option label="GPU (0)" value="0"></el-option>
+                      <el-option label="GPU (0,1)" value="0,1"></el-option>
+                    </el-select>
+                  </el-form-item>
+                  <el-button type="primary" @click="startTrain" :disabled="!trainConfig.dataset_id" style="width:100%">{{ t2('开始训练', 'Start') }}</el-button>
+                </el-form>
+              </el-card>
+            </el-col>
+            <el-col :span="16">
+              <el-card>
+                <template #header><span>{{ t2('任务监控', 'Job Monitor') }}</span></template>
+                 <template v-if="currentJob">
+                 <el-descriptions border :column="1">
+                    <el-descriptions-item :label="t2('任务 ID', 'Job ID')">{{ currentJob.job_id }}</el-descriptions-item>
+                    <el-descriptions-item :label="t2('状态', 'Status')">
+                      <el-tag :type="jobStatusType">{{ jobStatusText }}</el-tag>
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="t2('进度', 'Progress')">
+                      <el-progress :percentage="jobProgressPercent" :stroke-width="14"></el-progress>
+                      <div style="margin-top:6px; font-size:12px; color:#666;">
+                        <span v-if="currentJob && currentJob.metrics">{{ jobEpochsLine }}</span>
+                      </div>
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="t2('剩余时间', 'ETA')">
+                      <span>{{ jobEtaText }}</span>
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="t2('训练设备', 'Device')">
+                      <span>{{ jobDeviceText }}</span>
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="t2('实时指标', 'Live Metrics')" v-if="latestMetricsText">
+                      <el-input type="textarea" :rows="10" :model-value="latestMetricsText" readonly></el-input>
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="t2('失败原因', 'Error')" v-if="currentJob && currentJob.status === 'failed'">
+                      <div style="display:flex; gap:10px; align-items:flex-start;">
+                        <el-input type="textarea" :rows="8" :model-value="jobErrorText" readonly></el-input>
+                        <el-button size="small" @click="copyText(jobErrorText)" :disabled="!jobErrorText">{{ t2('复制', 'Copy') }}</el-button>
+                      </div>
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="t2('操作', 'Actions')">
+                        <el-button v-if="currentJob && currentJob.status === 'running'" type="danger" size="small" @click="stopTrain(currentJob.job_id)">{{ t2('停止任务', 'Stop') }}</el-button>
+                        <el-button type="primary" size="small" @click="refreshJobStatus">{{ t2('刷新状态', 'Refresh') }}</el-button>
+                    </el-descriptions-item>
+                 </el-descriptions>
+                 <div v-if="currentJob && currentJob.status === 'completed' && activeVersionId" style="margin-top: 16px;">
+                    <el-divider>{{ t2('训练结果预览', 'Results Preview') }} ({{ activeVersionId }})</el-divider>
+                    <el-row :gutter="12">
+                      <el-col :span="12">
+                        <div style="text-align:center;">
+                          <div style="margin-bottom:5px; color:#666;">{{ t2('训练曲线', 'Curves') }} (results.png)</div>
+                          <el-image :src="runsUrl('results.png')"
+                                    style="height:300px; border:1px solid #eee;"
+                                    :preview-src-list="[runsUrl('results.png')]"
+                                    fit="contain">
+                            <template #error>
+                              <div style="display:flex;justify-content:center;align-items:center;height:100%;color:#999;background:#f5f7fa;">
+                                {{ t2('暂无图表', 'No chart') }}
+                              </div>
+                            </template>
+                          </el-image>
+                        </div>
+                      </el-col>
+                      <el-col :span="12">
+                        <div style="text-align:center;">
+                          <div style="margin-bottom:5px; color:#666;">{{ t2('混淆矩阵', 'Confusion Matrix') }} (confusion_matrix.png)</div>
+                          <el-image :src="runsUrl('confusion_matrix.png')"
+                                    style="height:300px; border:1px solid #eee;"
+                                    :preview-src-list="[runsUrl('confusion_matrix.png')]"
+                                    fit="contain">
+                            <template #error>
+                              <div style="display:flex;justify-content:center;align-items:center;height:100%;color:#999;background:#f5f7fa;">
+                                {{ t2('暂无图表', 'No chart') }}
+                              </div>
+                            </template>
+                          </el-image>
+                        </div>
+                      </el-col>
+                    </el-row>
+                    <el-row :gutter="12" style="margin-top: 12px;">
+                      <el-col :span="12">
+                        <div style="text-align:center;">
+                          <div style="margin-bottom:5px; color:#666;">{{ t2('验证集标签', 'Val Labels') }} (val_batch0_labels.jpg)</div>
+                          <el-image :src="runsUrl('val_batch0_labels.jpg')"
+                                    style="height:300px; border:1px solid #eee;"
+                                    :preview-src-list="[runsUrl('val_batch0_labels.jpg')]"
+                                    fit="contain">
+                            <template #error>
+                              <div style="display:flex;justify-content:center;align-items:center;height:100%;color:#999;background:#f5f7fa;">
+                                {{ t2('暂无图片', 'No image') }}
+                              </div>
+                            </template>
+                          </el-image>
+                        </div>
+                      </el-col>
+                      <el-col :span="12">
+                        <div style="text-align:center;">
+                          <div style="margin-bottom:5px; color:#666;">{{ t2('验证集预测', 'Val Predictions') }} (val_batch0_pred.jpg)</div>
+                          <el-image :src="runsUrl('val_batch0_pred.jpg')"
+                                    style="height:300px; border:1px solid #eee;"
+                                    :preview-src-list="[runsUrl('val_batch0_pred.jpg')]"
+                                    fit="contain">
+                            <template #error>
+                              <div style="display:flex;justify-content:center;align-items:center;height:100%;color:#999;background:#f5f7fa;">
+                                {{ t2('暂无图片', 'No image') }}
+                              </div>
+                            </template>
+                          </el-image>
+                        </div>
+                      </el-col>
+                    </el-row>
+                 </div>
+                 </template>
+                 <el-empty v-else :description="t2('暂无运行中的任务', 'No running job')"></el-empty>
+              </el-card>
+            </el-col>
+          </el-row>
+        </el-tab-pane>
+
+        <!-- 模型管理 -->
+        <el-tab-pane :label="t2('模型版本', 'Models')" name="models">
+          <el-card>
+             <template #header>
+                <div class="card-header">
+                  <span>{{ t2('模型版本库', 'Model Registry') }}</span>
+                  <el-button @click="fetchModels">{{ t2('刷新', 'Refresh') }}</el-button>
+                </div>
+              </template>
+              <el-table :data="models" style="width: 100%">
+                <el-table-column prop="version_id" :label="t2('版本号', 'Version')"></el-table-column>
+                <el-table-column prop="created_at" :label="t2('创建时间', 'Created At')">
+                    <template #default="scope">{{ formatDate(scope.row.created_at) }}</template>
+                </el-table-column>
+                <el-table-column :label="t2('状态', 'Status')">
+                    <template #default="scope">
+                        <el-tag v-if="currentModel && currentModel.version_id === scope.row.version_id" type="success">{{ t2('当前在线', 'Online') }}</el-tag>
+                        <el-tag v-else type="info">{{ t2('离线', 'Offline') }}</el-tag>
+                    </template>
+                </el-table-column>
+                <el-table-column :label="t2('操作', 'Actions')">
+                  <template #default="scope">
+                    <el-button size="small" type="primary" 
+                               :disabled="currentModel && currentModel.version_id === scope.row.version_id"
+                               @click="publishModel(scope.row.version_id)">
+                       {{ t2('设为当前模型', 'Set Current') }}
+                    </el-button>
+                    <el-button size="small" type="danger"
+                               :disabled="currentModel && currentModel.version_id === scope.row.version_id"
+                               @click="deleteModel(scope.row.version_id)">
+                       {{ t2('删除', 'Delete') }}
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+          </el-card>
+          
+          <!-- 隐藏更新字典模块
+          <el-card style="margin-top: 20px">
+            <template #header><span>类别管理</span></template>
+             <el-form inline>
+                <el-form-item label="当前类别">
+                    <el-tag v-for="tag in classes" :key="tag" style="margin-right: 5px">{{ tag }}</el-tag>
+                </el-form-item>
+             </el-form>
+             <el-input v-model="newClassesInput" placeholder="输入新类别列表（JSON格式，如 ['A','B']）" style="width: 300px; margin-right: 10px"></el-input>
+             <el-button type="warning" @click="updateClasses">更新类别字典</el-button>
+          </el-card>
+          -->
+        </el-tab-pane>
+
+      </el-tabs>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, computed, onMounted, onBeforeUnmount, reactive, watch, nextTick } = Vue;
+    const { ElMessage, ElMessageBox } = ElementPlus;
+    const Icons = ElementPlusIconsVue;
+
+    const app = createApp({
+      setup() {
+        const LS_UI_LANG = 'ui_lang_v1';
+        const detectBrowserLang = () => {
+          try {
+            const v = (navigator.language || navigator.userLanguage || '').toLowerCase();
+            if (v.startsWith('zh')) return 'zh';
+          } catch (e) {}
+          return 'en';
+        };
+        const readUiLang = () => {
+          try {
+            const v = localStorage.getItem(LS_UI_LANG);
+            if (v === 'zh' || v === 'en') return v;
+          } catch (e) {}
+          return detectBrowserLang();
+        };
+        const uiLang = ref(readUiLang());
+        const setUiLang = (v) => {
+          const next = v === 'zh' ? 'zh' : 'en';
+          uiLang.value = next;
+          try { localStorage.setItem(LS_UI_LANG, next); } catch (e) {}
+          try { document.documentElement.setAttribute('lang', next === 'zh' ? 'zh-CN' : 'en'); } catch (e) {}
+          try { document.title = '深维工坊 DeepMatrix'; } catch (e) {}
+        };
+        const t2 = (zh, en) => (uiLang.value === 'en' ? en : zh);
+        setTimeout(() => setUiLang(uiLang.value), 0);
+
+        const activeTab = ref('inference');
+        const healthStatus = ref(false);
+        const lanUrl = ref('');
+        const appVersion = ref('v1.0.0');
+
+        const request = async (url, opts = {}) => {
+          const res = await fetch(url, opts);
+          const contentType = res.headers.get('content-type') || '';
+          let body = null;
+          try {
+            if (contentType.includes('application/json')) {
+              body = await res.json();
+            } else {
+              body = await res.text();
+            }
+          } catch (e) {
+            body = null;
+          }
+          if (!res.ok) {
+            const err = new Error(typeof body === 'string' ? body : (body && (body.detail || body.error)) || `HTTP ${res.status}`);
+            err.status = res.status;
+            err.body = body;
+            throw err;
+          }
+          return body;
+        };
+
+        const getJSON = (url) => request(url, { method: 'GET' });
+        const postJSON = (url, data) => request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+        const putJSON = (url, data) => request(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+        const postForm = (url, formData) => request(url, { method: 'POST', body: formData });
+        const deleteReq = (url) => request(url, { method: 'DELETE' });
+        
+        // Inference State
+        const fileInput = ref(null);
+        const previewUrl = ref('');
+        const inferConfig = reactive({ conf: 0.25, iou: 0.45, max_det: 100 });
+        const inferResult = ref(null);
+        const inferLoading = ref(false);
+        const imgContainer = ref(null);
+        const previewImg = ref(null);
+        const imgNaturalSize = reactive({ w: 0, h: 0 });
+        const imgDisplaySize = reactive({ w: 0, h: 0 });
+
+        // Datasets State
+        const datasets = ref([]);
+        const loadingDatasets = ref(false);
+        const datasetInput = ref(null);
+        const createDatasetVisible = ref(false);
+        const createDatasetForm = reactive({ dataset_id: '', val_split: 0.2 });
+        const datasetClassDialog = reactive({ visible: false, dataset_id: '', items: [], loading: false, new_name: '' });
+
+        // Training State
+        const trainConfig = reactive({ dataset_id: '', model_version: '', epochs: 10, batch: 8, imgsz: 640, device: 'cpu' });
+        const currentJob = ref(null);
+        const trainPreviewNonce = ref(Date.now());
+
+        const bumpTrainPreviewNonce = () => {
+          trainPreviewNonce.value = Date.now();
+        };
+
+        const activeVersionId = computed(() => {
+          const m = currentJob.value && currentJob.value.metrics ? currentJob.value.metrics : null;
+          const vid = m && m.model_version_id ? String(m.model_version_id) : '';
+          return vid || null;
+        });
+
+        const runsUrl = (filename) => {
+          if (!activeVersionId.value) return '';
+          return `/runs/${activeVersionId.value}/${filename}?t=${trainPreviewNonce.value}`;
+        };
+
+        const latestMetricsText = computed(() => {
+          const m = currentJob.value && currentJob.value.metrics ? currentJob.value.metrics : null;
+          const history = m && m.history;
+          if (!Array.isArray(history) || history.length === 0) return '';
+          const last = history[history.length - 1];
+          const metrics = last && last.metrics ? last.metrics : null;
+          try {
+            return JSON.stringify(metrics, null, 2);
+          } catch (e) {
+            return metrics ? String(metrics) : '';
+          }
+        });
+
+        // Labeling State
+        const LS_LABEL_LAST_CLASS_ID = 'label_last_class_id_v1';
+        const LS_LABEL_CLASS_ORDER = 'label_class_order_v1';
+        const LS_LABEL_ZOOM = 'label_zoom_percent_v1';
+        const LS_LABEL_AUTO_SAVE = 'label_auto_save_v1';
+
+        const safeReadJSON = (key, fallback) => {
+          try {
+            const v = localStorage.getItem(key);
+            if (!v) return fallback;
+            return JSON.parse(v);
+          } catch (e) {
+            return fallback;
+          }
+        };
+
+        const safeWriteJSON = (key, val) => {
+          try {
+            localStorage.setItem(key, JSON.stringify(val));
+          } catch (e) {}
+        };
+
+        const readLastClassId = () => {
+          try {
+            const v = localStorage.getItem(LS_LABEL_LAST_CLASS_ID);
+            if (v === null || v === undefined || v === '') return null;
+            const n = Number(v);
+            return Number.isFinite(n) ? n : null;
+          } catch (e) {
+            return null;
+          }
+        };
+
+        const writeLastClassId = (id) => {
+          try {
+            if (id === null || id === undefined) return;
+            localStorage.setItem(LS_LABEL_LAST_CLASS_ID, String(id));
+          } catch (e) {}
+        };
+
+        const clampZoom = (z) => {
+          const n = Number(z);
+          if (!Number.isFinite(n)) return 100;
+          return Math.max(20, Math.min(300, Math.round(n)));
+        };
+
+        const readLabelZoom = () => {
+          try {
+            const v = localStorage.getItem(LS_LABEL_ZOOM);
+            if (v === null || v === undefined || v === '') return 100;
+            return clampZoom(v);
+          } catch (e) {
+            return 100;
+          }
+        };
+
+        const writeLabelZoom = (z) => {
+          try {
+            localStorage.setItem(LS_LABEL_ZOOM, String(clampZoom(z)));
+          } catch (e) {}
+        };
+
+        const readLabelAutoSave = () => {
+          try {
+            const v = localStorage.getItem(LS_LABEL_AUTO_SAVE);
+            if (v === null || v === undefined || v === '') return true;
+            if (v === '1') return true;
+            if (v === '0') return false;
+            return v === 'true';
+          } catch (e) {
+            return true;
+          }
+        };
+
+        const writeLabelAutoSave = (v) => {
+          try {
+            localStorage.setItem(LS_LABEL_AUTO_SAVE, v ? '1' : '0');
+          } catch (e) {}
+        };
+
+        const labelConfig = reactive({ dataset_id: '', current_class_id: readLastClassId(), new_class_name: '', val_split: 0.1, tool: 'rect', auto_save: readLabelAutoSave() });
+        const labelUi = reactive({ classSearch: '' });
+        const labelView = reactive({ zoom: readLabelZoom(), fitW: 0, fitH: 0 });
+        const labelImageSrc = ref('');
+        const annoImg = ref(null);
+        const labelCanvasRef = ref(null);
+        const bottomStripRef = ref(null);
+        const labelImages = ref([]);
+        const labelImagesTotalCount = computed(() => {
+          const list = Array.isArray(labelImages.value) ? labelImages.value : [];
+          return list.length;
+        });
+        const labelImagesLabeledCount = computed(() => {
+          const list = Array.isArray(labelImages.value) ? labelImages.value : [];
+          let n = 0;
+          for (const img of list) {
+            if (img && img.labeled) n += 1;
+          }
+          return n;
+        });
+        const labelImagesProgressPercent = computed(() => {
+          const total = labelImagesTotalCount.value;
+          if (total <= 0) return 0;
+          return Math.max(0, Math.min(100, Math.round((labelImagesLabeledCount.value / total) * 100)));
+        });
+        const currentLabelImage = ref(null);
+        const importInput = ref(null);
+        let anno = null;
+        let ws = null;
+        let annoRebuildTimer = 0;
+        let annoAutoCommitBound = false;
+        let draftBoxTrackerBound = false;
+        let draftPointerId = null;
+        let draftStartPt = null;
+        let draftLastBox = null;
+        const currentAnnotations = ref([]);
+        const selectedAnnotation = ref(null);
+        const deleteOverlay = reactive({ visible: false, left: 0, top: 0 });
+        const classOverlay = reactive({ visible: false, left: 0, top: 0 });
+        const labelState = reactive({ dirty: false, saving: false, savedSig: '' });
+        let dirtyCheckTimer = 0;
+        const mobileUploadVisible = ref(false);
+        const mobileUploadUrl = ref('');
+        const mobileQrRef = ref(null);
+
+        const buildMobileUploadUrl = () => {
+          const did = labelConfig.dataset_id;
+          if (!did) return '';
+          const baseRaw = (lanUrl.value && String(lanUrl.value).trim()) ? String(lanUrl.value).trim() : window.location.origin;
+          const base = String(baseRaw).replace(/\/+$/, '');
+          return `${base}/mobile_upload.html?dataset_id=${encodeURIComponent(did)}`;
+        };
+
+        const renderMobileQr = () => {
+          const el = mobileQrRef.value;
+          if (!el) return;
+          try {
+            el.innerHTML = '';
+          } catch (e) {}
+          const url = mobileUploadUrl.value;
+          if (!url) return;
+          try {
+            if (typeof QRCode !== 'function') return;
+            new QRCode(el, { text: url, width: 200, height: 200 });
+          } catch (e) {}
+        };
+
+        const refreshMobileQr = async () => {
+          mobileUploadUrl.value = buildMobileUploadUrl();
+          await nextTick();
+          renderMobileQr();
+        };
+
+        const openMobileUpload = async () => {
+          if (!labelConfig.dataset_id) return ElMessage.warning(t2('请先选择数据集', 'Please select a dataset first'));
+          mobileUploadUrl.value = buildMobileUploadUrl();
+          mobileUploadVisible.value = true;
+          await nextTick();
+          renderMobileQr();
+        };
+
+        watch(mobileUploadVisible, async (v) => {
+          if (!v) return;
+          await refreshMobileQr();
+        });
+
+        watch(
+          () => labelConfig.dataset_id,
+          async () => {
+            if (!mobileUploadVisible.value) return;
+            await refreshMobileQr();
+          }
+        );
+
+        const computeAnnotationsSig = (anns) => {
+          if (!Array.isArray(anns) || anns.length === 0) return '';
+          const items = [];
+          for (const ann of anns) {
+            try {
+              const rawSel = ann && ann.target ? ann.target.selector : null;
+              const selectors = Array.isArray(rawSel) ? rawSel : (rawSel && typeof rawSel === 'object' ? [rawSel] : []);
+              let st = '';
+              let sv = '';
+              for (const sel of selectors) {
+                if (!sel || typeof sel !== 'object') continue;
+                if (!st && sel.type) st = String(sel.type);
+                if (!sv && sel.value !== undefined && sel.value !== null) {
+                  if (typeof sel.value === 'string') {
+                    const t = sel.value.trim();
+                    if (t) sv = t;
+                  } else {
+                    try {
+                      sv = JSON.stringify(sel.value);
+                    } catch (e) {
+                      sv = String(sel.value);
+                    }
+                  }
+                }
+                if (st && sv) break;
+              }
+              const body = ann && ann.body ? ann.body : null;
+              const tags = [];
+              if (Array.isArray(body)) {
+                for (const b of body) {
+                  if (!b || typeof b !== 'object') continue;
+                  if (b.purpose === 'tagging' && typeof b.value === 'string' && b.value.trim()) tags.push(b.value.trim());
+                }
+              }
+              tags.sort();
+              items.push([st, sv, tags]);
+            } catch (e) {}
+          }
+          items.sort((a, b) => {
+            const as = String(a && a[1] ? a[1] : '');
+            const bs = String(b && b[1] ? b[1] : '');
+            const c1 = as.localeCompare(bs);
+            if (c1) return c1;
+            return String(a && a[0] ? a[0] : '').localeCompare(String(b && b[0] ? b[0] : ''));
+          });
+          try {
+            return JSON.stringify(items);
+          } catch (e) {
+            return String(items.length);
+          }
+        };
+
+        const scheduleDirtyCheck = () => {
+          try {
+            if (dirtyCheckTimer) clearTimeout(dirtyCheckTimer);
+          } catch (e) {}
+          dirtyCheckTimer = setTimeout(() => {
+            dirtyCheckTimer = 0;
+            if (!currentLabelImage.value) {
+              labelState.dirty = false;
+              labelState.savedSig = '';
+              return;
+            }
+            const sig = computeAnnotationsSig(Array.isArray(currentAnnotations.value) ? currentAnnotations.value : []);
+            labelState.dirty = sig !== (labelState.savedSig || '');
+          }, 60);
+        };
+
+        const updateLabelFitSize = () => {
+          try {
+            const img = annoImg.value;
+            const container = labelCanvasRef.value;
+            if (!img || !container) return;
+            const nw = Number(img.naturalWidth) || 0;
+            const nh = Number(img.naturalHeight) || 0;
+            const cw = Number(container.clientWidth) || 0;
+            const ch = Number(container.clientHeight) || 0;
+            if (nw <= 0 || nh <= 0 || cw <= 0 || ch <= 0) return;
+            const s = Math.min(cw / nw, ch / nh, 1);
+            labelView.fitW = Math.max(1, Math.floor(nw * s));
+            labelView.fitH = Math.max(1, Math.floor(nh * s));
+          } catch (e) {}
+        };
+
+        const annoImgStyle = computed(() => {
+          const z = clampZoom(labelView.zoom);
+          const ratio = z / 100;
+          const style = { display: 'block', boxShadow: '0 0 10px rgba(0,0,0,0.1)' };
+          const bw = Number(labelView.fitW) || 0;
+          const bh = Number(labelView.fitH) || 0;
+          if (bw > 0 && bh > 0) {
+            style.width = Math.max(1, Math.round(bw * ratio)) + 'px';
+            style.height = Math.max(1, Math.round(bh * ratio)) + 'px';
+            style.maxWidth = 'none';
+            style.maxHeight = 'none';
+          } else {
+            style.maxWidth = '100%';
+            style.maxHeight = '100%';
+          }
+          return style;
+        });
+
+        const thumbKey = (img) => {
+          if (!img) return '';
+          const subset = img.subset === undefined || img.subset === null ? '' : String(img.subset);
+          const name = img.name === undefined || img.name === null ? '' : String(img.name);
+          return `${subset}::${name}`;
+        };
+
+        const _escapeAttrSelectorValue = (v) => {
+          return String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        };
+
+        const _revealThumbIfNeeded = (container, el, behavior) => {
+          try {
+            if (!container || !el) return;
+            const margin = 12;
+            const cr = container.getBoundingClientRect();
+            const er = el.getBoundingClientRect();
+            if (er.left < cr.left + margin) {
+              const delta = (er.left - cr.left) - margin;
+              container.scrollTo({ left: container.scrollLeft + delta, behavior });
+              return;
+            }
+            if (er.right > cr.right - margin) {
+              const delta = (er.right - cr.right) + margin;
+              container.scrollTo({ left: container.scrollLeft + delta, behavior });
+              return;
+            }
+          } catch (e) {}
+        };
+
+        const revealSelectedThumb = (behavior = 'auto') => {
+          try {
+            const container = bottomStripRef.value;
+            const img = currentLabelImage.value;
+            if (!container || !img) return;
+            const key = thumbKey(img);
+            if (!key) return;
+            const selector = `[data-thumb-key="${_escapeAttrSelectorValue(key)}"]`;
+            let el = null;
+            try {
+              el = container.querySelector(selector);
+            } catch (e) {
+              el = null;
+            }
+            if (!el) {
+              const children = Array.from(container.children || []);
+              el = children.find((c) => c && c.dataset && c.dataset.thumbKey === key) || null;
+            }
+            if (!el) return;
+            _revealThumbIfNeeded(container, el, behavior);
+          } catch (e) {}
+        };
+
+        const getAnnotationId = (ann) => {
+          try {
+            if (!ann || typeof ann !== 'object') return null;
+            if (typeof ann.id === 'string' && ann.id) return ann.id;
+            if (typeof ann['@id'] === 'string' && ann['@id']) return ann['@id'];
+            return null;
+          } catch (e) {
+            return null;
+          }
+        };
+
+        const newClientAnnotationId = () => {
+          try {
+            const c = typeof crypto !== 'undefined' ? crypto : null;
+            if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+          } catch (e) {}
+          return `ann_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+        };
+
+        const ensureAnnotationId = (ann) => {
+          try {
+            if (!ann || typeof ann !== 'object') return ann;
+            const id = getAnnotationId(ann);
+            if (id) return ann;
+            ann.id = newClientAnnotationId();
+          } catch (e) {}
+          return ann;
+        };
+
+        const isSameAnnotation = (a, b) => {
+          try {
+            if (!a || !b) return false;
+            if (a === b) return true;
+            const aid = getAnnotationId(a);
+            const bid = getAnnotationId(b);
+            if (aid && bid && aid === bid) return true;
+            const as = getSelectorValue(a);
+            const bs = getSelectorValue(b);
+            return !!(as && bs && as === bs);
+          } catch (e) {
+            return false;
+          }
+        };
+
+        let overlaysRaf = 0;
+        const scheduleUpdateOverlays = () => {
+          try {
+            if (overlaysRaf) cancelAnimationFrame(overlaysRaf);
+          } catch (e) {}
+          overlaysRaf = requestAnimationFrame(() => {
+            overlaysRaf = 0;
+            updateDeleteOverlay();
+            updateClassOverlay();
+          });
+        };
+
+        const setCurrentAnnotations = (anns) => {
+          currentAnnotations.value = Array.isArray(anns) ? anns : [];
+        };
+
+        const upsertCurrentAnnotation = (ann) => {
+          if (!ann) return;
+          const id = getAnnotationId(ann);
+          if (!id) {
+            currentAnnotations.value = Array.isArray(currentAnnotations.value)
+              ? [...currentAnnotations.value, ann]
+              : [ann];
+            return;
+          }
+          const list = Array.isArray(currentAnnotations.value) ? [...currentAnnotations.value] : [];
+          const idx = list.findIndex(a => getAnnotationId(a) === id);
+          if (idx >= 0) list[idx] = ann;
+          else list.push(ann);
+          currentAnnotations.value = list;
+        };
+
+        const removeCurrentAnnotation = (ann) => {
+          const id = getAnnotationId(ann);
+          if (!id) return;
+          const list = Array.isArray(currentAnnotations.value) ? currentAnnotations.value : [];
+          currentAnnotations.value = list.filter(a => getAnnotationId(a) !== id);
+        };
+
+        const coerceAnnotationsList = (v) => {
+          if (Array.isArray(v)) return v;
+          if (!v || typeof v !== 'object') return [];
+          try {
+            if (Array.isArray(v.annotations)) return v.annotations;
+            if (v.annotations && typeof v.annotations === 'object') {
+              if (Array.isArray(v.annotations.features)) return v.annotations.features;
+              if (Array.isArray(v.annotations.items)) return v.annotations.items;
+              if (Array.isArray(v.annotations.value)) return v.annotations.value;
+              if (Array.isArray(v.annotations.results)) return v.annotations.results;
+            }
+            if (Array.isArray(v.features)) return v.features;
+            if (Array.isArray(v.items)) return v.items;
+            if (Array.isArray(v.value)) return v.value;
+            if (Array.isArray(v.results)) return v.results;
+            if (typeof v[Symbol.iterator] === 'function') {
+              const arr = Array.from(v);
+              if (Array.isArray(arr)) return arr;
+            }
+          } catch (e) {}
+          return [];
+        };
+
+        const syncAnnotationsFromAnno = (opts = {}) => {
+          try {
+            if (anno && typeof anno.getAnnotations === 'function') {
+              const got = anno.getAnnotations();
+              const list = coerceAnnotationsList(got);
+              const allowEmpty = opts && Object.prototype.hasOwnProperty.call(opts, 'allowEmpty') ? Boolean(opts.allowEmpty) : false;
+              if (list.length || allowEmpty) {
+                const normalized = normalizeAnnotationsSource(list, getCurrentLabelSourceUrl());
+                setCurrentAnnotations(normalized);
+              }
+            }
+          } catch (e) {}
+          scheduleDirtyCheck();
+        };
+
+        const normalizeSourceUrl = (src) => {
+          try {
+            const s = src === undefined || src === null ? '' : String(src);
+            if (!s) return '';
+            const u = new URL(s, window.location.href);
+            return `${u.origin}${u.pathname}`;
+          } catch (e) {
+            try {
+              return String(src || '');
+            } catch (e2) {
+              return '';
+            }
+          }
+        };
+
+        const getCurrentLabelSourceUrl = () => {
+          try {
+            const s = annoImg.value && annoImg.value.src ? annoImg.value.src : '';
+            if (s) return normalizeSourceUrl(s);
+          } catch (e) {}
+          try {
+            const img = currentLabelImage.value;
+            if (img && img.url) return normalizeSourceUrl(img.url);
+          } catch (e) {
+            return '';
+          }
+        };
+
+        const normalizeAnnotationsSource = (anns, sourcePath) => {
+          const src = normalizeSourceUrl(sourcePath);
+          if (!Array.isArray(anns)) return [];
+          return anns.map((a) => {
+            try {
+              if (!a || typeof a !== 'object') return a;
+              try {
+                if (!a['@context']) a['@context'] = 'http://www.w3.org/ns/anno.jsonld';
+              } catch (e) {}
+              try {
+                if (!a.type || a.type === 'Selection') a.type = 'Annotation';
+              } catch (e) {}
+              try {
+                if (!Array.isArray(a.body)) a.body = a.body ? [a.body] : [];
+              } catch (e) {}
+              ensureAnnotationId(a);
+              if (!a.target || typeof a.target !== 'object') a.target = {};
+              if (src) a.target.source = src;
+              return a;
+            } catch (e) {
+              return a;
+            }
+          });
+        };
+
+        const bindAnnoEvents = () => {
+          try {
+            if (!anno || typeof anno.on !== 'function') return;
+            anno.on('selectAnnotation', (a) => {
+              ensureAnnotationId(a);
+              selectedAnnotation.value = a || null;
+              try {
+                if (anno && typeof anno.setDrawingTool === 'function') {
+                  anno.setDrawingTool(selectedAnnotation.value ? null : (labelConfig.tool || 'rect'));
+                }
+              } catch (e) {}
+              setTimeout(() => updateDeleteOverlay(), 0);
+              setTimeout(() => updateClassOverlay(), 0);
+            });
+            anno.on('clickAnnotation', (a) => {
+              ensureAnnotationId(a);
+              selectedAnnotation.value = a || null;
+              try {
+                if (anno && typeof anno.setDrawingTool === 'function') {
+                  anno.setDrawingTool(selectedAnnotation.value ? null : (labelConfig.tool || 'rect'));
+                }
+              } catch (e) {}
+              setTimeout(() => updateDeleteOverlay(), 0);
+              setTimeout(() => updateClassOverlay(), 0);
+            });
+            anno.on('selectionChanged', (selected) => {
+              try {
+                if (Array.isArray(selected) && selected.length > 0) {
+                  ensureAnnotationId(selected[0]);
+                  selectedAnnotation.value = selected[0] || null;
+                } else {
+                  selectedAnnotation.value = null;
+                }
+              } catch (e) {
+                selectedAnnotation.value = null;
+              }
+              try {
+                if (anno && typeof anno.setDrawingTool === 'function') {
+                  anno.setDrawingTool(selectedAnnotation.value ? null : (labelConfig.tool || 'rect'));
+                }
+              } catch (e) {}
+              setTimeout(() => updateDeleteOverlay(), 0);
+              setTimeout(() => updateClassOverlay(), 0);
+            });
+            anno.on('cancelSelected', () => {
+              selectedAnnotation.value = null;
+              hideDeleteOverlay();
+              hideClassOverlay();
+              try {
+                if (anno && typeof anno.setDrawingTool === 'function') {
+                  anno.setDrawingTool(labelConfig.tool || 'rect');
+                }
+              } catch (e) {}
+            });
+            anno.on('createAnnotation', (a) => {
+              ensureAnnotationId(a);
+              upsertCurrentAnnotation(a);
+              scheduleDirtyCheck();
+            });
+            anno.on('updateAnnotation', (a) => {
+              if (a && selectedAnnotation.value) {
+                const selId = getAnnotationId(selectedAnnotation.value);
+                const aId = getAnnotationId(a);
+                if (selId && !aId) {
+                  try { a.id = selId; } catch (e) {}
+                }
+              }
+              ensureAnnotationId(a);
+              upsertCurrentAnnotation(a);
+              if (!a || !selectedAnnotation.value) return;
+              const selId = getAnnotationId(selectedAnnotation.value);
+              const aId = getAnnotationId(a);
+              if (!selId || (selId && aId && selId === aId) || isSameAnnotation(selectedAnnotation.value, a)) {
+                selectedAnnotation.value = a;
+                scheduleUpdateOverlays();
+              }
+              scheduleDirtyCheck();
+            });
+            anno.on('deleteAnnotation', (a) => {
+              removeCurrentAnnotation(a);
+              const id = getAnnotationId(a);
+              if (selectedAnnotation.value && (selectedAnnotation.value === a || (id && getAnnotationId(selectedAnnotation.value) === id))) {
+                selectedAnnotation.value = null;
+                hideDeleteOverlay();
+                hideClassOverlay();
+              }
+              scheduleDirtyCheck();
+            });
+          } catch (e) {}
+        };
+
+        const rebuildAnno = () => {
+          try {
+            if (!annoImg.value) return;
+            let anns = [];
+            try {
+              if (anno && typeof anno.getAnnotations === 'function') {
+                const got = anno.getAnnotations();
+                anns = coerceAnnotationsList(got);
+              } else {
+                anns = Array.isArray(currentAnnotations.value) ? currentAnnotations.value : [];
+              }
+            } catch (e) {
+              anns = Array.isArray(currentAnnotations.value) ? currentAnnotations.value : [];
+            }
+            const normalized = normalizeAnnotationsSource(anns, getCurrentLabelSourceUrl());
+            if (anno) {
+              try { anno.destroy(); } catch (e) {}
+              anno = null;
+            }
+            anno = Annotorious.init({
+              image: annoImg.value,
+              widgets: []
+            });
+            Annotorious.SelectorPack(anno);
+            bindDraftBoxTracker();
+            selectedAnnotation.value = null;
+            hideDeleteOverlay();
+            hideClassOverlay();
+            anno.setDrawingTool('rect');
+            setCurrentAnnotations(normalized);
+            if (anno && typeof anno.setAnnotations === 'function') {
+              anno.setAnnotations(normalized);
+            }
+            bindAnnoEvents();
+            setTimeout(() => updateDeleteOverlay(), 0);
+            setTimeout(() => updateClassOverlay(), 0);
+          } catch (e) {}
+        };
+
+        const scheduleRebuildAnno = () => {
+          try {
+            if (annoRebuildTimer) clearTimeout(annoRebuildTimer);
+          } catch (e) {}
+          annoRebuildTimer = setTimeout(() => {
+            annoRebuildTimer = 0;
+            rebuildAnno();
+          }, 50);
+        };
+
+        const isAnnoUiEventTarget = (target) => {
+          try {
+            if (!target || typeof target.closest !== 'function') return false;
+            return !!(
+              target.closest('.a9s-annotationlayer') ||
+              target.closest('.a9s-annotation') ||
+              target.closest('.a9s-handle') ||
+              target.closest('.a9s-selection') ||
+              target.closest('.a9s-selection-toolbar') ||
+              target.closest('.r6o-editor') ||
+              target.closest('.r6o-widget') ||
+              target.closest('[data-anno-aux]')
+            );
+          } catch (e) {
+            return false;
+          }
+        };
+
+        const isAnnoEditorEventTarget = (target) => {
+          try {
+            if (!target || typeof target.closest !== 'function') return false;
+            return !!(
+              target.closest('.r6o-editor') ||
+              target.closest('.r6o-widget') ||
+              target.closest('input,textarea,select,[contenteditable=""],[contenteditable="true"],[role="textbox"]')
+            );
+          } catch (e) {
+            return false;
+          }
+        };
+
+        const isInsideLabelCanvas = (target) => {
+          try {
+            const container = labelCanvasRef && labelCanvasRef.value;
+            if (!container || !target) return false;
+            return typeof container.contains === 'function' ? container.contains(target) : false;
+          } catch (e) {
+            return false;
+          }
+        };
+
+        const onGlobalPointerUpForAnno = (e) => {
+          try {
+            if (activeTab.value !== 'labeling') return;
+            if (!anno) return;
+            if (labelState.saving) return;
+            if (e && isAnnoEditorEventTarget(e.target)) return;
+            if (e && isInsideLabelCanvas(e.target)) return;
+            if (e && isAnnoUiEventTarget(e.target)) return;
+            if (typeof anno.saveSelected === 'function') {
+              anno.saveSelected();
+            }
+          } catch (e2) {}
+          setTimeout(() => syncAnnotationsFromAnno(), 0);
+        };
+
+        const onGlobalPointerDownForAnno = (e) => {
+          try {
+            if (!e) return;
+            if (activeTab.value !== 'labeling') return;
+            if (!anno) return;
+            if (labelState.saving) return;
+            if (isAnnoEditorEventTarget(e.target)) return;
+            if (isInsideLabelCanvas(e.target)) return;
+            if (isAnnoUiEventTarget(e.target)) return;
+            if (typeof anno.saveSelected === 'function') {
+              anno.saveSelected();
+            }
+          } catch (e2) {}
+          setTimeout(() => syncAnnotationsFromAnno(), 0);
+        };
+
+        const onGlobalKeyUpForAnno = (e) => {
+          try {
+            if (!e || e.key !== 'Enter') return;
+          } catch (e2) {
+            return;
+          }
+          onGlobalPointerUpForAnno();
+        };
+
+        const bindAnnoAutoCommit = () => {
+          try {
+            if (annoAutoCommitBound) return;
+            document.addEventListener('pointerdown', onGlobalPointerDownForAnno, true);
+            document.addEventListener('pointerup', onGlobalPointerUpForAnno, true);
+            document.addEventListener('keyup', onGlobalKeyUpForAnno, true);
+            annoAutoCommitBound = true;
+          } catch (e) {}
+        };
+
+        const unbindAnnoAutoCommit = () => {
+          try {
+            if (!annoAutoCommitBound) return;
+            document.removeEventListener('pointerdown', onGlobalPointerDownForAnno, true);
+            document.removeEventListener('pointerup', onGlobalPointerUpForAnno, true);
+            document.removeEventListener('keyup', onGlobalKeyUpForAnno, true);
+            annoAutoCommitBound = false;
+          } catch (e) {}
+        };
+
+        const commitSelectionIfPossible = (selection) => {
+          try {
+            if (!anno) return false;
+            if (typeof anno.saveSelected === 'function') {
+              anno.saveSelected();
+              return true;
+            }
+            if (typeof anno.updateSelected === 'function') {
+              if (selection) {
+                anno.updateSelected(selection, true);
+                return true;
+              }
+            }
+            if (typeof anno.addAnnotation === 'function') {
+              if (selection) {
+                anno.addAnnotation(selection);
+                return true;
+              }
+            }
+          } catch (e) {}
+          return false;
+        };
+
+        const _raf = () => new Promise((r) => {
+          try {
+            if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(() => r());
+          } catch (e) {}
+          setTimeout(() => r(), 0);
+        });
+
+        const flushAnnoSelectionAndSync = async () => {
+          try {
+            if (!anno) return;
+            const _awaitMaybe = async (v) => {
+              try {
+                if (v && (typeof v === 'object' || typeof v === 'function') && typeof v.then === 'function') {
+                  await v;
+                }
+              } catch (e) {}
+            };
+            try {
+              if (typeof anno.saveSelected === 'function') await _awaitMaybe(anno.saveSelected());
+            } catch (e) {}
+            try {
+              commitSelectionIfPossible(selectedAnnotation.value);
+            } catch (e) {}
+            try {
+              const hasSelectionEl = !!document.querySelector('.a9s-selection');
+              if (hasSelectionEl) {
+                const evt = new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true });
+                document.dispatchEvent(evt);
+              }
+            } catch (e) {}
+            try {
+              await Promise.resolve();
+              await _raf();
+              await _raf();
+            } catch (e) {}
+            try {
+              syncAnnotationsFromAnno();
+            } catch (e) {}
+          } catch (e) {}
+        };
+
+        const readAnnoAnnotations = () => {
+          try {
+            if (anno && typeof anno.getAnnotations === 'function') {
+              const a = anno.getAnnotations();
+              const list = coerceAnnotationsList(a);
+              return Array.isArray(list) ? list : [];
+            }
+          } catch (e) {}
+          return [];
+        };
+
+        const awaitAnnoAnnotationsNonEmpty = async (timeoutMs = 260) => {
+          const started = Date.now();
+          let last = [];
+          while (Date.now() - started < timeoutMs) {
+            last = readAnnoAnnotations();
+            if (last && last.length) return last;
+            try { await _raf(); } catch (e) { break; }
+          }
+          return last && last.length ? last : readAnnoAnnotations();
+        };
+
+        const getActiveLabelClassMeta = () => {
+          try {
+            const cid = Number(labelConfig.current_class_id);
+            if (!Number.isFinite(cid) || cid < 0) return { cid: null, cname: '' };
+            const opts = Array.isArray(classOptions.value) ? classOptions.value : [];
+            const hit = opts.find(o => o && Number(o.id) === cid);
+            const cname = hit && hit.name ? String(hit.name) : `class_${cid}`;
+            return { cid, cname };
+          } catch (e) {
+            return { cid: null, cname: '' };
+          }
+        };
+
+        const synthesizeAnnotationFromDomSelection = () => {
+          try {
+            if (!annoImg.value) return null;
+            const selEl = document.querySelector('.a9s-selection, [class*="a9s-selection"]');
+            if (!selEl || typeof selEl.getBoundingClientRect !== 'function') return null;
+            const selRect = selEl.getBoundingClientRect();
+            const imgRect = annoImg.value.getBoundingClientRect();
+            if (!selRect || !imgRect) return null;
+            if (!(selRect.width > 0 && selRect.height > 0)) return null;
+            if (!(imgRect.width > 0 && imgRect.height > 0)) return null;
+            const nw = Number(annoImg.value.naturalWidth) || 0;
+            const nh = Number(annoImg.value.naturalHeight) || 0;
+            if (!(nw > 0 && nh > 0)) return null;
+            const sx = nw / imgRect.width;
+            const sy = nh / imgRect.height;
+            let x = (selRect.left - imgRect.left) * sx;
+            let y = (selRect.top - imgRect.top) * sy;
+            let w = selRect.width * sx;
+            let h = selRect.height * sy;
+            if (!(w > 0 && h > 0)) return null;
+            x = Math.max(0, Math.min(nw - 1, x));
+            y = Math.max(0, Math.min(nh - 1, y));
+            w = Math.max(1, Math.min(nw - x, w));
+            h = Math.max(1, Math.min(nh - y, h));
+
+            const meta = getActiveLabelClassMeta();
+            const body = [];
+            if (meta && meta.cname) body.push({ type: 'TextualBody', purpose: 'tagging', value: meta.cname });
+            if (meta && meta.cid !== null && meta.cid !== undefined) body.push({ type: 'TextualBody', purpose: 'class_id', value: String(meta.cid) });
+            const source = getCurrentLabelSourceUrl();
+            const ann = {
+              '@context': 'http://www.w3.org/ns/anno.jsonld',
+              id: newClientAnnotationId(),
+              type: 'Annotation',
+              body,
+              target: {
+                source: source ? normalizeSourceUrl(source) : '',
+                selector: {
+                  type: 'FragmentSelector',
+                  conformsTo: 'http://www.w3.org/TR/media-frags/',
+                  value: `xywh=pixel:${x},${y},${w},${h}`
+                }
+              }
+            };
+            return ann;
+          } catch (e) {
+            return null;
+          }
+        };
+
+        const clientDragToNaturalBox = (a, b) => {
+          try {
+            if (!annoImg.value) return null;
+            const imgRect = annoImg.value.getBoundingClientRect();
+            if (!imgRect || !(imgRect.width > 0 && imgRect.height > 0)) return null;
+            const nw = Number(annoImg.value.naturalWidth) || 0;
+            const nh = Number(annoImg.value.naturalHeight) || 0;
+            if (!(nw > 0 && nh > 0)) return null;
+            const sx = nw / imgRect.width;
+            const sy = nh / imgRect.height;
+            const x0 = (Math.min(a.x, b.x) - imgRect.left) * sx;
+            const y0 = (Math.min(a.y, b.y) - imgRect.top) * sy;
+            const x1 = (Math.max(a.x, b.x) - imgRect.left) * sx;
+            const y1 = (Math.max(a.y, b.y) - imgRect.top) * sy;
+            let x = Math.max(0, Math.min(nw - 1, x0));
+            let y = Math.max(0, Math.min(nh - 1, y0));
+            let w = Math.max(1, Math.min(nw - x, x1 - x0));
+            let h = Math.max(1, Math.min(nh - y, y1 - y0));
+            if (!(w > 0 && h > 0)) return null;
+            return { x, y, w, h, ts: Date.now() };
+          } catch (e) {
+            return null;
+          }
+        };
+
+        const synthesizeAnnotationFromDraftBox = () => {
+          try {
+            const box = draftLastBox;
+            if (!box || typeof box !== 'object') return null;
+            if (!box.ts || Date.now() - Number(box.ts) > 8000) return null;
+            const x = Number(box.x), y = Number(box.y), w = Number(box.w), h = Number(box.h);
+            if (!(w > 0 && h > 0)) return null;
+            const meta = getActiveLabelClassMeta();
+            const body = [];
+            if (meta && meta.cname) body.push({ type: 'TextualBody', purpose: 'tagging', value: meta.cname });
+            if (meta && meta.cid !== null && meta.cid !== undefined) body.push({ type: 'TextualBody', purpose: 'class_id', value: String(meta.cid) });
+            const source = getCurrentLabelSourceUrl();
+            return {
+              '@context': 'http://www.w3.org/ns/anno.jsonld',
+              id: newClientAnnotationId(),
+              type: 'Annotation',
+              body,
+              target: {
+                source: source ? normalizeSourceUrl(source) : '',
+                selector: {
+                  type: 'FragmentSelector',
+                  conformsTo: 'http://www.w3.org/TR/media-frags/',
+                  value: `xywh=pixel:${x},${y},${w},${h}`
+                }
+              }
+            };
+          } catch (e) {
+            return null;
+          }
+        };
+
+        const bindDraftBoxTracker = () => {
+          try {
+            if (draftBoxTrackerBound) return;
+            const onDown = (e) => {
+              try {
+                if (!e) return;
+                if (activeTab.value !== 'labeling') return;
+                if (labelState.saving) return;
+                if (labelConfig.tool && String(labelConfig.tool) !== 'rect') return;
+                if (_isEditableElementForHotkey(e.target) || _isEditableElementForHotkey(document.activeElement)) return;
+                const img = annoImg.value;
+                if (!img) return;
+                const r = img.getBoundingClientRect();
+                if (!r || !(r.width > 0 && r.height > 0)) return;
+                const x = Number(e.clientX), y = Number(e.clientY);
+                if (!(x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)) return;
+                draftPointerId = e.pointerId || null;
+                draftStartPt = { x, y };
+              } catch (e2) {}
+            };
+            const onUp = (e) => {
+              try {
+                if (!draftStartPt) return;
+                if (draftPointerId && e && e.pointerId && e.pointerId !== draftPointerId) return;
+                const end = { x: Number(e && e.clientX), y: Number(e && e.clientY) };
+                if (!Number.isFinite(end.x) || !Number.isFinite(end.y)) return;
+                const dx = Math.abs(end.x - draftStartPt.x);
+                const dy = Math.abs(end.y - draftStartPt.y);
+                if (dx < 3 || dy < 3) return;
+                const box = clientDragToNaturalBox(draftStartPt, end);
+                if (box) draftLastBox = box;
+              } catch (e2) {} finally {
+                draftStartPt = null;
+                draftPointerId = null;
+              }
+            };
+            const onCancel = () => {
+              draftStartPt = null;
+              draftPointerId = null;
+            };
+            document.addEventListener('pointerdown', onDown, true);
+            document.addEventListener('pointerup', onUp, true);
+            document.addEventListener('pointercancel', onCancel, true);
+            draftBoxTrackerBound = true;
+            bindDraftBoxTracker._handlers = { onDown, onUp, onCancel };
+          } catch (e) {}
+        };
+
+        const unbindDraftBoxTracker = () => {
+          try {
+            if (!draftBoxTrackerBound) return;
+            const h = bindDraftBoxTracker._handlers;
+            if (h && h.onDown) document.removeEventListener('pointerdown', h.onDown, true);
+            if (h && h.onUp) document.removeEventListener('pointerup', h.onUp, true);
+            if (h && h.onCancel) document.removeEventListener('pointercancel', h.onCancel, true);
+          } catch (e) {} finally {
+            draftBoxTrackerBound = false;
+            draftStartPt = null;
+            draftPointerId = null;
+            bindDraftBoxTracker._handlers = null;
+          }
+        };
+
+        const onAnnoImgLoad = () => {
+            if (annoImg.value) {
+                annoImg.value.style.display = 'block';
+                setTimeout(() => {
+                    updateLabelFitSize();
+                    nextTick(() => {
+                      if (anno) anno.destroy();
+                      anno = Annotorious.init({ 
+                          image: annoImg.value,
+                          widgets: []
+                      });
+                      Annotorious.SelectorPack(anno);
+                      bindDraftBoxTracker();
+                      selectedAnnotation.value = null;
+                      hideDeleteOverlay();
+                      hideClassOverlay();
+                      anno.setDrawingTool('rect');
+                      
+                      const initial = currentLabelImage.value && Array.isArray(currentLabelImage.value.annotations) ? currentLabelImage.value.annotations : [];
+                      const normalized = normalizeAnnotationsSource(initial, getCurrentLabelSourceUrl());
+                      setCurrentAnnotations(normalized);
+                      if (anno && typeof anno.setAnnotations === 'function') {
+                        anno.setAnnotations(normalized);
+                      }
+                      bindAnnoEvents();
+                      setTimeout(() => updateDeleteOverlay(), 0);
+                      setTimeout(() => updateClassOverlay(), 0);
+                    });
+                }, 0);
+            }
+        };
+
+        const deleteSelectedAnnotation = async () => {
+          if (!anno || !currentLabelImage.value || !labelConfig.dataset_id) return;
+          const a = selectedAnnotation.value;
+          if (!a) return;
+          const delId = getAnnotationId(a);
+          const delSig = getSelectorValue(a);
+          let anns = [];
+          try {
+            const got = (anno && typeof anno.getAnnotations === 'function') ? anno.getAnnotations() : [];
+            anns = Array.isArray(got) ? got : [];
+          } catch (e) {
+            anns = Array.isArray(currentAnnotations.value) ? currentAnnotations.value : [];
+          }
+          const remaining = anns.filter(x => {
+            try {
+              if (delId) return getAnnotationId(x) !== delId;
+              if (delSig) return getSelectorValue(x) !== delSig;
+              return x !== a;
+            } catch (e) {
+              return true;
+            }
+          });
+          try {
+            if (anno && typeof anno.setAnnotations === 'function') {
+              anno.setAnnotations(remaining);
+            }
+          } catch (e) {}
+          const normalized = normalizeAnnotationsSource(remaining, getCurrentLabelSourceUrl());
+          setCurrentAnnotations(normalized);
+          currentLabelImage.value.annotations = normalized;
+          currentLabelImage.value.boxes = extractBoxesFromAnnotations(normalized);
+          currentLabelImage.value.labeled = remaining.length > 0;
+          scheduleDirtyCheck();
+          const li = labelImages.value.find(x => x && x.name === currentLabelImage.value.name && x.subset === currentLabelImage.value.subset);
+          if (li) {
+            li.annotations = normalized;
+            li.boxes = currentLabelImage.value.boxes;
+            li.labeled = currentLabelImage.value.labeled;
+          }
+          selectedAnnotation.value = null;
+          hideDeleteOverlay();
+
+          const fd = new FormData();
+          fd.append('dataset_id', labelConfig.dataset_id);
+          fd.append('annotations_json', JSON.stringify(normalized));
+          fd.append('class_id', labelConfig.current_class_id !== null ? labelConfig.current_class_id : 0);
+          fd.append('val_split', labelConfig.val_split);
+          fd.append('width', annoImg.value.naturalWidth);
+          fd.append('height', annoImg.value.naturalHeight);
+          fd.append('image_name', currentLabelImage.value.name);
+          fd.append('subset', currentLabelImage.value.subset);
+          try {
+            await postForm('/annotation/save', fd);
+            try {
+              const saved = await getJSON(`/datasets/${labelConfig.dataset_id}/annotation/${currentLabelImage.value.subset}/${currentLabelImage.value.name}`);
+              const next = Array.isArray(saved) ? saved : [];
+              const savedNormalized = normalizeAnnotationsSource(next, getCurrentLabelSourceUrl());
+              currentLabelImage.value.annotations = savedNormalized;
+              setCurrentAnnotations(savedNormalized);
+              currentLabelImage.value.boxes = extractBoxesFromAnnotations(savedNormalized);
+              currentLabelImage.value.labeled = savedNormalized.length > 0;
+              labelState.savedSig = computeAnnotationsSig(savedNormalized);
+              labelState.dirty = false;
+              if (anno) anno.setAnnotations(savedNormalized);
+              const li2 = labelImages.value.find(x => x && x.name === currentLabelImage.value.name && x.subset === currentLabelImage.value.subset);
+              if (li2) {
+                li2.annotations = savedNormalized;
+                li2.boxes = currentLabelImage.value.boxes;
+                li2.labeled = currentLabelImage.value.labeled;
+              }
+            } catch (e) {}
+          } catch (e) {
+            ElMessage.error(t2('删除失败: ', 'Delete failed: ') + (e && e.message ? e.message : ''));
+          }
+        };
+
+        const extractBoxesFromAnnotations = (annList) => {
+            if (!Array.isArray(annList)) return null;
+            const out = [];
+            for (const ann of annList) {
+                const rawSel = ann && ann.target ? ann.target.selector : null;
+                const selectors = Array.isArray(rawSel) ? rawSel : (rawSel && typeof rawSel === 'object' ? [rawSel] : []);
+                if (!selectors.length) continue;
+                for (const sel of selectors) {
+                  if (!sel || typeof sel !== 'object') continue;
+                  const t = sel.type;
+                  const v = sel.value;
+                  if (t === 'FragmentSelector' && typeof v === 'string' && v.startsWith('xywh=pixel:')) {
+                      const rest = v.replace('xywh=pixel:', '');
+                      const parts = rest.split(',').map(x => Number(x));
+                      if (parts.length === 4 && parts.every(n => Number.isFinite(n)) && parts[2] > 0 && parts[3] > 0) {
+                          out.push(parts);
+                          break;
+                      }
+                  } else if (t === 'SvgSelector' && typeof v === 'string') {
+                      try {
+                        const rectMatch = v.match(/<rect[^>]*\sx=["']?([\d.]+)["']?[^>]*\sy=["']?([\d.]+)["']?[^>]*\swidth=["']?([\d.]+)["']?[^>]*\sheight=["']?([\d.]+)["']?[^>]*>/i);
+                        if (rectMatch) {
+                          const x = Number(rectMatch[1]);
+                          const y = Number(rectMatch[2]);
+                          const w = Number(rectMatch[3]);
+                          const h = Number(rectMatch[4]);
+                          if ([x, y, w, h].every(n => Number.isFinite(n)) && w > 0 && h > 0) out.push([x, y, w, h]);
+                          break;
+                        }
+                        const pointsMatch = v.match(/points=["']([\d\s,\.]+)["']/i);
+                        if (pointsMatch) {
+                          const coords = pointsMatch[1].split(/[\s,]+/).filter(Boolean).map(s => Number(s));
+                          const xs = [];
+                          const ys = [];
+                          for (let i = 0; i + 1 < coords.length; i += 2) {
+                            const x = coords[i];
+                            const y = coords[i + 1];
+                            if (Number.isFinite(x) && Number.isFinite(y)) {
+                              xs.push(x);
+                              ys.push(y);
+                            }
+                          }
+                          if (xs.length && ys.length) {
+                            const minX = Math.min(...xs);
+                            const maxX = Math.max(...xs);
+                            const minY = Math.min(...ys);
+                            const maxY = Math.max(...ys);
+                            const w = maxX - minX;
+                            const h = maxY - minY;
+                            if (w > 0 && h > 0) out.push([minX, minY, w, h]);
+                            break;
+                          }
+                        }
+                      } catch (e) {}
+                  }
+                }
+            }
+            return out.length ? out : null;
+        };
+
+        const extractClassNamesFromAnnotations = (annList) => {
+            if (!Array.isArray(annList)) return [];
+            const set = new Set();
+            for (const ann of annList) {
+                const body = ann && ann.body ? ann.body : null;
+                if (!Array.isArray(body)) continue;
+                for (const b of body) {
+                    if (!b || typeof b !== 'object') continue;
+                    const purpose = b.purpose;
+                    const val = b.value;
+                    if (purpose === 'tagging' && typeof val === 'string' && val.trim()) {
+                        set.add(val.trim());
+                    }
+                }
+            }
+            return Array.from(set);
+        };
+
+        const inferClassIdFromAnnotations = (annList) => {
+          const list = Array.isArray(annList) ? annList : [];
+          const names = Array.isArray(classes.value) ? classes.value : [];
+          const nameToId = new Map();
+          for (let i = 0; i < names.length; i += 1) {
+            const n = String(names[i] || '').trim();
+            if (n && !nameToId.has(n)) nameToId.set(n, i);
+          }
+          const counts = new Map();
+          const bump = (id) => {
+            const n = Number(id);
+            if (!Number.isFinite(n)) return;
+            counts.set(n, (counts.get(n) || 0) + 1);
+          };
+          for (const ann of list) {
+            const body = ann && Array.isArray(ann.body) ? ann.body : [];
+            let cid = null;
+            for (const b of body) {
+              if (!b || typeof b !== 'object') continue;
+              if (b.purpose !== 'class_id') continue;
+              const v = Number(b.value);
+              if (Number.isFinite(v)) {
+                cid = v;
+                break;
+              }
+            }
+            if (cid === null) {
+              for (const b of body) {
+                if (!b || typeof b !== 'object') continue;
+                if (b.purpose !== 'tagging') continue;
+                if (typeof b.value !== 'string') continue;
+                const t = b.value.trim();
+                if (t && nameToId.has(t)) {
+                  cid = nameToId.get(t);
+                  break;
+                }
+              }
+            }
+            if (cid !== null) bump(cid);
+          }
+          if (counts.size === 0) return null;
+          let best = null;
+          let bestCount = -1;
+          for (const [id, c] of counts.entries()) {
+            if (c > bestCount) {
+              bestCount = c;
+              best = id;
+            }
+          }
+          return best;
+        };
+
+        const currentLabelImageClasses = computed(() => {
+          const img = currentLabelImage.value;
+          const anns = img && Array.isArray(img.annotations) ? img.annotations : currentAnnotations.value;
+          return extractClassNamesFromAnnotations(anns);
+        });
+
+        const getSelectorValue = (ann) => {
+          try {
+            const rawSel = ann && ann.target ? ann.target.selector : null;
+            const selectors = Array.isArray(rawSel) ? rawSel : (rawSel && typeof rawSel === 'object' ? [rawSel] : []);
+            for (const sel of selectors) {
+              if (!sel || typeof sel !== 'object') continue;
+              if (sel.value === undefined || sel.value === null) continue;
+              if (typeof sel.value === 'string') {
+                const t = sel.value.trim();
+                if (t) return t;
+                continue;
+              }
+              try {
+                return JSON.stringify(sel.value);
+              } catch (e) {
+                return String(sel.value);
+              }
+            }
+            return '';
+          } catch (e) {
+            return '';
+          }
+        };
+
+        const getBoxFromAnnotation = (ann) => {
+          const list = extractBoxesFromAnnotations([ann]);
+          return Array.isArray(list) && list.length ? list[0] : null;
+        };
+
+        const hideDeleteOverlay = () => {
+          deleteOverlay.visible = false;
+          deleteOverlay.left = 0;
+          deleteOverlay.top = 0;
+        };
+
+        const hideClassOverlay = () => {
+          classOverlay.visible = false;
+          classOverlay.left = 0;
+          classOverlay.top = 0;
+        };
+
+        const updateClassOverlay = () => {
+          try {
+            if (!annoImg.value || !labelCanvasRef.value || !currentLabelImage.value) {
+              hideClassOverlay();
+              return;
+            }
+            const classes = currentLabelImageClasses.value;
+            if (!Array.isArray(classes) || classes.length === 0) {
+              hideClassOverlay();
+              return;
+            }
+            const imgEl = annoImg.value;
+            const container = labelCanvasRef.value || imgEl.parentElement;
+            if (!container) {
+              hideClassOverlay();
+              return;
+            }
+            const imgRect = imgEl.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            classOverlay.left = Math.max(0, Math.round((imgRect.left - containerRect.left) + 10));
+            classOverlay.top = Math.max(0, Math.round((imgRect.top - containerRect.top) + 10));
+            classOverlay.visible = true;
+          } catch (e) {
+            hideClassOverlay();
+          }
+        };
+
+        const updateDeleteOverlay = () => {
+          try {
+            if (!annoImg.value || !selectedAnnotation.value) {
+              hideDeleteOverlay();
+              return;
+            }
+            const box = getBoxFromAnnotation(selectedAnnotation.value);
+            if (!box || box.length !== 4) {
+              hideDeleteOverlay();
+              return;
+            }
+            const imgEl = annoImg.value;
+            const container = labelCanvasRef.value || imgEl.parentElement;
+            if (!container) {
+              hideDeleteOverlay();
+              return;
+            }
+            const imgRect = imgEl.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            const nw = imgEl.naturalWidth || 0;
+            const nh = imgEl.naturalHeight || 0;
+            if (!nw || !nh) {
+              hideDeleteOverlay();
+              return;
+            }
+            const sx = imgRect.width / nw;
+            const sy = imgRect.height / nh;
+            const [x, y, w, h] = box;
+            const left = (imgRect.left - containerRect.left) + x * sx;
+            const top = (imgRect.top - containerRect.top) + y * sy;
+            const width = w * sx;
+            const height = h * sy;
+            const btnSize = 20;
+            deleteOverlay.left = Math.max(0, Math.round(left + width - btnSize / 2));
+            deleteOverlay.top = Math.max(0, Math.round(top - btnSize / 2));
+            deleteOverlay.visible = true;
+          } catch (e) {
+            hideDeleteOverlay();
+          }
+        };
+
+        const onThumbLoad = (img, evt) => {
+            try {
+                const el = evt && evt.target ? evt.target : null;
+                if (!el) return;
+                const nw = el.naturalWidth || 0;
+                const nh = el.naturalHeight || 0;
+                const dw = el.clientWidth || 0;
+                const dh = el.clientHeight || 0;
+                const parent = el.parentElement;
+                const pw = parent ? parent.clientWidth : 0;
+                const ph = parent ? parent.clientHeight : 0;
+                img._thumb = {
+                    nw, nh, dw, dh,
+                    ox: Math.max(0, (pw - dw) / 2),
+                    oy: Math.max(0, (ph - dh) / 2),
+                    pw, ph
+                };
+            } catch (e) {}
+        };
+
+        const thumbBoxStyle = (img, b) => {
+            const t0 = img && img._thumb ? img._thumb : null;
+            let t = t0;
+            if (!t && img && Number(img.w) > 0 && Number(img.h) > 0) {
+              const nw = Number(img.w);
+              const nh = Number(img.h);
+              const pw = 100;
+              const ph = 80;
+              const s = Math.min(pw / nw, ph / nh);
+              const dw = nw * s;
+              const dh = nh * s;
+              t = {
+                nw, nh, dw, dh,
+                ox: Math.max(0, (pw - dw) / 2),
+                oy: Math.max(0, (ph - dh) / 2)
+              };
+            }
+            if (!t || !b || b.length !== 4 || !t.nw || !t.nh) return {};
+            const [x, y, w, h] = b;
+            const sx = t.dw / t.nw;
+            const sy = t.dh / t.nh;
+            const left = t.ox + x * sx;
+            const top = t.oy + y * sy;
+            const width = w * sx;
+            const height = h * sy;
+            return {
+                position: 'absolute',
+                left: left + 'px',
+                top: top + 'px',
+                width: width + 'px',
+                height: height + 'px',
+                border: '2px solid #2ecc71',
+                boxSizing: 'border-box',
+                background: 'rgba(46, 204, 113, 0.06)',
+                pointerEvents: 'none'
+            };
+        };
+        
+        const addNewClass = async () => {
+             const name = labelConfig.new_class_name.trim();
+             if(!name) return;
+             if (!labelConfig.dataset_id) {
+                 ElMessage.warning(t2('请先选择数据集', 'Please select a dataset first'));
+                 return;
+             }
+             const items = Array.isArray(datasetClassItems.value) ? datasetClassItems.value : [];
+             if (items.some(it => it && !it.deleted && String(it.name || '') === name)) {
+                 ElMessage.warning(t2('类别已存在', 'Class already exists'));
+                 return;
+             }
+             try {
+                 const res = await postJSON(`/datasets/${labelConfig.dataset_id}/classes`, { name });
+                 await fetchClasses(labelConfig.dataset_id);
+                 labelConfig.new_class_name = '';
+                 const cid = res && res.item && Number.isFinite(Number(res.item.id)) ? Number(res.item.id) : null;
+                 labelConfig.current_class_id = cid;
+                 writeLastClassId(labelConfig.current_class_id);
+                 const prevOrder = safeReadJSON(LS_LABEL_CLASS_ORDER, []);
+                 const idx = Number(labelConfig.current_class_id);
+                 if (Number.isFinite(idx) && idx >= 0) {
+                   const nextOrder = [idx, ...prevOrder.filter(x => x !== idx)];
+                   safeWriteJSON(LS_LABEL_CLASS_ORDER, nextOrder);
+                 }
+                 ElMessage.success(t2('类别添加成功', 'Class added'));
+             } catch(e) { ElMessage.error(t2('添加失败', 'Add failed')); }
+        };
+
+        const applyClassToAnnotations = (anns, classId) => {
+          const cid = Number(classId);
+          if (!Number.isFinite(cid)) return Array.isArray(anns) ? anns : [];
+          const names = Array.isArray(classes.value) ? classes.value : [];
+          const className = (cid >= 0 && cid < names.length) ? String(names[cid] || '') : '';
+          const list = Array.isArray(anns) ? anns : [];
+
+          return list.map((a) => {
+            if (!a || typeof a !== 'object') return a;
+            const out = { ...a };
+            const body0 = Array.isArray(a.body) ? a.body : [];
+            const body = body0.map((b) => (b && typeof b === 'object') ? { ...b } : b).filter(Boolean);
+
+            let hasCid = false;
+            let hasTag = false;
+            for (const b of body) {
+              if (!b || typeof b !== 'object') continue;
+              const purpose = b.purpose;
+              if (purpose === 'class_id') {
+                b.value = String(cid);
+                hasCid = true;
+              } else if (purpose === 'tagging') {
+                if (className) {
+                  b.value = className;
+                  hasTag = true;
+                }
+              }
+            }
+
+            if (!hasCid) body.push({ type: 'TextualBody', purpose: 'class_id', value: String(cid) });
+            if (!hasTag && className) body.push({ type: 'TextualBody', purpose: 'tagging', value: className });
+
+            out.body = body;
+            try {
+              ensureAnnotationId(out);
+            } catch (e) {}
+            return out;
+          });
+        };
+
+        let labelClassSaveTimer = 0;
+        const onLabelClassChange = async (val) => {
+          if (!currentLabelImage.value || !labelConfig.dataset_id) return;
+          if (labelState.saving) return;
+          const cid = Number(val);
+          if (!Number.isFinite(cid)) return;
+
+          try {
+            syncAnnotationsFromAnno();
+          } catch (e) {}
+
+          const anns = Array.isArray(currentAnnotations.value) ? currentAnnotations.value : [];
+          if (!anns.length) return;
+
+          const nextAnns = applyClassToAnnotations(anns, cid);
+          setCurrentAnnotations(nextAnns);
+          try {
+            currentLabelImage.value.annotations = nextAnns;
+            currentLabelImage.value.boxes = extractBoxesFromAnnotations(nextAnns);
+            currentLabelImage.value.labeled = nextAnns.length > 0;
+          } catch (e) {}
+          try {
+            if (anno) anno.setAnnotations(nextAnns);
+          } catch (e) {}
+          scheduleDirtyCheck();
+          scheduleUpdateOverlays();
+
+          try {
+            if (labelClassSaveTimer) clearTimeout(labelClassSaveTimer);
+          } catch (e) {}
+          labelClassSaveTimer = setTimeout(async () => {
+            labelClassSaveTimer = 0;
+            try {
+              await saveLabeling({ autoNext: false });
+            } catch (e) {}
+          }, 120);
+        };
+
+        const connectWebSocket = (datasetId) => {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            ws = new WebSocket(`${protocol}//${host}/ws/dataset/${datasetId}`);
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'update') {
+                        const target = labelImages.value.find(img => img.name === msg.image && (!msg.subset || img.subset === msg.subset));
+                        if (target) {
+                            target.labeled = msg.labeled;
+                            if (msg.labeled && !target.boxes && msg.subset && target && target.name) {
+                                try {
+                                  getJSON(`/datasets/${datasetId}/annotation/${encodeURIComponent(String(msg.subset))}/${encodeURIComponent(String(target.name))}`)
+                                    .then((anns) => {
+                                      const list = Array.isArray(anns) ? anns : [];
+                                      const normalized = normalizeAnnotationsSource(list, target.url);
+                                      target.boxes = extractBoxesFromAnnotations(normalized);
+                                    })
+                                    .catch(() => {});
+                                } catch (e) {}
+                            }
+                        } else {
+                            const name = msg && msg.image ? String(msg.image) : '';
+                            const subset = msg && msg.subset ? String(msg.subset) : '';
+                            if (name && (subset === 'train' || subset === 'val')) {
+                                const url = `/datasets/${datasetId}/image/${subset}/${encodeURIComponent(name)}`;
+                                const next = Array.isArray(labelImages.value) ? labelImages.value.slice() : [];
+                                next.push({ name, subset, labeled: Boolean(msg.labeled), url, boxes: null, w: null, h: null });
+                                labelImages.value = next;
+                            }
+                        }
+                        return;
+                    }
+                    if (msg.type === 'remove') {
+                        const list = Array.isArray(labelImages.value) ? labelImages.value : [];
+                        const nextList = list.filter(img => !(img && img.name === msg.image && (!msg.subset || img.subset === msg.subset)));
+                        labelImages.value = nextList;
+                        if (currentLabelImage.value && currentLabelImage.value.name === msg.image && (!msg.subset || currentLabelImage.value.subset === msg.subset)) {
+                            currentLabelImage.value = null;
+                            labelImageSrc.value = '';
+                            labelState.dirty = false;
+                            labelState.savedSig = '';
+                            setCurrentAnnotations([]);
+                            selectedAnnotation.value = null;
+                            try {
+                                if (anno) anno.setAnnotations([]);
+                            } catch (e) {}
+                        }
+                        return;
+                    }
+                } catch(e) {}
+            };
+        };
+
+        const onLabelDatasetChange = async (val) => {
+            if (!val) return;
+            labelUi.classSearch = '';
+            try {
+                try {
+                    await fetchClasses(val);
+                } catch (e) {
+                    ElMessage.error(t2('加载类别失败: ', 'Failed to load classes: ') + (e && e.message ? e.message : ''));
+                }
+                const res = await getJSON(`/datasets/${val}/images`);
+                labelImages.value = res;
+                currentLabelImage.value = null;
+                labelImageSrc.value = '';
+                labelState.dirty = false;
+                labelState.savedSig = '';
+                setCurrentAnnotations([]);
+                if (anno) { anno.destroy(); anno = null; }
+                connectWebSocket(val);
+            } catch(e) {
+                ElMessage.error(t2('加载图片失败', 'Failed to load images'));
+            }
+        };
+
+        const refreshLabelImages = async () => {
+            const did = labelConfig.dataset_id;
+            if (!did) return ElMessage.warning(t2('请先选择数据集', 'Please select a dataset first'));
+            if (labelState.saving) return;
+
+            const cur = currentLabelImage.value;
+            const curName = cur && cur.name ? String(cur.name) : '';
+            const curSubset = cur && cur.subset ? String(cur.subset) : '';
+            const loading = ElMessage({ message: t2('正在刷新图集...', 'Refreshing gallery...'), type: 'info', duration: 0, icon: 'Loading' });
+            try {
+                const prevList = Array.isArray(labelImages.value) ? labelImages.value : [];
+                const res = await getJSON(`/datasets/${did}/images`);
+                const nextList = Array.isArray(res) ? res : [];
+                const merged = nextList.map((it) => {
+                  const keyName = it && it.name ? String(it.name) : '';
+                  const keySubset = it && it.subset ? String(it.subset) : '';
+                  const prev = prevList.find((p) => p && String(p.name) === keyName && String(p.subset) === keySubset);
+                  if (!prev) return it;
+                  const out = { ...it };
+                  if (!out.boxes && prev.boxes) out.boxes = prev.boxes;
+                  if (!out._thumb && prev._thumb) out._thumb = prev._thumb;
+                  if (!out.w && prev.w) out.w = prev.w;
+                  if (!out.h && prev.h) out.h = prev.h;
+                  return out;
+                });
+                labelImages.value = merged;
+
+                if (curName && curSubset) {
+                    const found = (Array.isArray(labelImages.value) ? labelImages.value : []).find(
+                      (img) => img && String(img.name) === curName && String(img.subset) === curSubset
+                    );
+                    if (found) {
+                        await gotoLabelImage(found);
+                    } else {
+                        currentLabelImage.value = null;
+                        labelImageSrc.value = '';
+                        labelState.dirty = false;
+                        labelState.savedSig = '';
+                        setCurrentAnnotations([]);
+                        selectedAnnotation.value = null;
+                        try {
+                            if (anno) anno.setAnnotations([]);
+                        } catch (e) {}
+                    }
+                }
+            } catch (e) {
+                ElMessage.error(t2('刷新失败', 'Refresh failed'));
+            } finally {
+                try { loading.close(); } catch (e) {}
+            }
+        };
+
+        const loadLabelImage = async (img) => {
+            currentLabelImage.value = img;
+            labelImageSrc.value = img.url;
+            labelState.dirty = false;
+            labelState.savedSig = '';
+            nextTick(() => revealSelectedThumb('smooth'));
+            try {
+                const anns = await getJSON(`/datasets/${labelConfig.dataset_id}/annotation/${img.subset}/${img.name}`);
+                const list = Array.isArray(anns) ? anns : [];
+                const normalized = normalizeAnnotationsSource(list, img.url);
+                img.annotations = normalized;
+                setCurrentAnnotations(normalized);
+                try {
+                  const inferred = inferClassIdFromAnnotations(normalized);
+                  if (Number.isFinite(Number(inferred))) {
+                    const opts = Array.isArray(classOptions.value) ? classOptions.value : [];
+                    const ok = opts.some(o => o && Number(o.id) === Number(inferred));
+                    if (ok) labelConfig.current_class_id = Number(inferred);
+                  }
+                } catch (e) {}
+                labelState.savedSig = computeAnnotationsSig(normalized);
+                labelState.dirty = false;
+                img.boxes = extractBoxesFromAnnotations(normalized);
+                img.labeled = normalized.length > 0;
+                if (anno) {
+                    anno.setAnnotations(normalized);
+                }
+            } catch(e) {
+                if (anno) anno.setAnnotations([]);
+                setCurrentAnnotations([]);
+                labelState.savedSig = '';
+                labelState.dirty = false;
+            }
+        };
+
+        const gotoLabelImage = async (img, opts = {}) => {
+          if (!img) return;
+          if (labelState.saving) return;
+          try {
+            const cur = currentLabelImage.value;
+            if (cur && img && cur.name === img.name && cur.subset === img.subset) return;
+          } catch (e) {}
+          await loadLabelImage(img);
+        };
+
+        const triggerImportImages = () => {
+             if (importInput.value) {
+                 importInput.value.setAttribute('webkitdirectory', '');
+                 importInput.value.click();
+             }
+        };
+
+        const importImages = async (e) => {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            
+            const fd = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                fd.append('files', files[i]);
+            }
+            
+            const loading = ElMessage({
+                message: '正在导入图片...',
+                type: 'info',
+                duration: 0,
+                icon: 'Loading'
+            });
+            
+            try {
+                // Remove content-type header, browser sets it with boundary
+                const res = await fetch(`/datasets/${labelConfig.dataset_id}/import`, {
+                    method: 'POST',
+                    body: fd
+                });
+                if (!res.ok) {
+                    let msg = `HTTP ${res.status}`;
+                    try {
+                        const j = await res.json();
+                        msg = (j && (j.error || j.detail)) ? String(j.error || j.detail) : JSON.stringify(j);
+                    } catch (e) {}
+                    throw new Error(msg);
+                }
+                const data = await res.json();
+                ElMessage.success(t2(`成功导入 ${data.imported} 张图片`, `Imported ${data.imported} images`));
+                onLabelDatasetChange(labelConfig.dataset_id); // Reload
+            } catch(e) {
+                ElMessage.error(t2('导入失败: ', 'Import failed: ') + e.message);
+            } finally {
+                loading.close();
+                e.target.value = '';
+            }
+        };
+
+        const saveLabeling = async (opts = {}) => {
+          if (!currentLabelImage.value || !labelConfig.dataset_id) {
+            ElMessage.warning(t2('请先选择数据集并打开一张图片', 'Select a dataset and open an image first'));
+            return false;
+          }
+          if (!anno) {
+            ElMessage.warning(t2('标注组件未初始化，请刷新页面后重试', 'Annotation tool not initialized. Refresh and try again.'));
+            return false;
+          }
+          if (labelState.saving) return false;
+          const autoNext = opts && Object.prototype.hasOwnProperty.call(opts, 'autoNext') ? Boolean(opts.autoNext) : true;
+          labelState.saving = true;
+          let nextAfterSave = null;
+          try {
+            try {
+              await flushAnnoSelectionAndSync();
+            } catch (e) {}
+            syncAnnotationsFromAnno();
+
+            let annotations = [];
+            try {
+              annotations = readAnnoAnnotations();
+              if (!annotations || annotations.length === 0) {
+                annotations = await awaitAnnoAnnotationsNonEmpty(260);
+              }
+            } catch (e) {}
+            if ((!annotations || annotations.length === 0) && Array.isArray(currentAnnotations.value)) {
+              annotations = currentAnnotations.value;
+            }
+            if ((!annotations || annotations.length === 0)) {
+              try {
+                await flushAnnoSelectionAndSync();
+              } catch (e) {}
+              try {
+                annotations = readAnnoAnnotations();
+                if (!annotations || annotations.length === 0) {
+                  annotations = await awaitAnnoAnnotationsNonEmpty(360);
+                }
+              } catch (e) {}
+              if ((!annotations || annotations.length === 0) && Array.isArray(currentAnnotations.value) && currentAnnotations.value.length) {
+                annotations = currentAnnotations.value;
+              }
+              if ((!annotations || annotations.length === 0) && selectedAnnotation.value) {
+                annotations = [ensureAnnotationId(selectedAnnotation.value)];
+              }
+              if ((!annotations || annotations.length === 0)) {
+                try {
+                  const ann = synthesizeAnnotationFromDomSelection();
+                  if (ann) {
+                    let existed = [];
+                    try { existed = readAnnoAnnotations(); } catch (e) {}
+                    const list = Array.isArray(existed) ? existed : [];
+                    const sig = getSelectorValue(ann);
+                    const has = sig ? list.some(x => {
+                      try { return getSelectorValue(x) === sig; } catch (e) { return false; }
+                    }) : false;
+                    const next = has ? list : [...list, ann];
+                    annotations = next.length ? next : [ann];
+                    try {
+                      const normalized = normalizeAnnotationsSource(annotations, getCurrentLabelSourceUrl());
+                      setCurrentAnnotations(normalized);
+                      if (anno && typeof anno.setAnnotations === 'function') {
+                        anno.setAnnotations(normalized);
+                      }
+                    } catch (e) {}
+                  }
+                } catch (e) {}
+              }
+              if ((!annotations || annotations.length === 0)) {
+                try {
+                  const ann = synthesizeAnnotationFromDraftBox();
+                  if (ann) {
+                    annotations = [ann];
+                    try {
+                      const normalized = normalizeAnnotationsSource(annotations, getCurrentLabelSourceUrl());
+                      setCurrentAnnotations(normalized);
+                      if (anno && typeof anno.setAnnotations === 'function') {
+                        anno.setAnnotations(normalized);
+                      }
+                    } catch (e) {}
+                  }
+                } catch (e) {}
+              }
+            }
+            annotations = normalizeAnnotationsSource(annotations, getCurrentLabelSourceUrl());
+            if (!Array.isArray(annotations) || annotations.length === 0) {
+              ElMessage.warning(t2('未获取到有效标注数据（已尝试自动确认当前选区；如仍失败请按 Enter 或点击图片空白处后再保存）', 'No valid annotation data (auto-commit attempted). Press Enter or click blank area then save again.'));
+              try {
+                let raw = null;
+                let rawType = '';
+                let rawKeys = [];
+                let listLen = 0;
+                let hasSelEl = false;
+                let draftBoxInfo = '';
+                if (anno && typeof anno.getAnnotations === 'function') {
+                  try {
+                    raw = anno.getAnnotations();
+                    rawType = Object.prototype.toString.call(raw);
+                    rawKeys = raw && typeof raw === 'object' ? Object.keys(raw).slice(0, 20) : [];
+                    listLen = coerceAnnotationsList(raw).length;
+                  } catch (e) {}
+                }
+                try {
+                  hasSelEl = !!document.querySelector('.a9s-selection, [class*="a9s-selection"]');
+                } catch (e) {}
+                try {
+                  draftBoxInfo = draftLastBox ? JSON.stringify(draftLastBox) : '';
+                } catch (e) { draftBoxInfo = String(draftLastBox || ''); }
+                const cur = currentLabelImage.value;
+                const msg = [
+                  '保存失败诊断信息（请复制给开发排查）：',
+                  `dataset_id=${labelConfig.dataset_id || ''}`,
+                  `image=${cur && cur.name ? cur.name : ''}`,
+                  `subset=${cur && cur.subset ? cur.subset : ''}`,
+                  `anno.getAnnotations type=${rawType}`,
+                  `anno.getAnnotations keys=${rawKeys.join(',')}`,
+                  `anno.getAnnotations listLen=${listLen}`,
+                  `currentAnnotationsLen=${Array.isArray(currentAnnotations.value) ? currentAnnotations.value.length : -1}`,
+                  `selectedAnnotation=${selectedAnnotation.value ? 'yes' : 'no'}`,
+                  `hasSelectionEl=${hasSelEl ? 'yes' : 'no'}`,
+                  `draftLastBox=${draftBoxInfo}`,
+                  `has saveSelected=${anno && typeof anno.saveSelected === 'function' ? 'yes' : 'no'}`,
+                  `has updateSelected=${anno && typeof anno.updateSelected === 'function' ? 'yes' : 'no'}`,
+                  `has addAnnotation=${anno && typeof anno.addAnnotation === 'function' ? 'yes' : 'no'}`,
+                  '',
+                  '建议动作：画框后先按 Enter 或点击图片空白处确认，再按 S 保存。'
+                ].join('\n');
+                ElMessageBox.alert(`<pre style="white-space:pre-wrap; word-break:break-all; margin:0;">${msg}</pre>`, t2('保存失败', 'Save failed'), {
+                  dangerouslyUseHTMLString: true,
+                  confirmButtonText: t2('知道了', 'OK')
+                });
+              } catch (e) {}
+              return false;
+            }
+
+            currentLabelImage.value.annotations = annotations;
+            currentLabelImage.value.boxes = extractBoxesFromAnnotations(annotations);
+
+            let annotationsJson = '';
+            try {
+              annotationsJson = JSON.stringify(annotations);
+            } catch (e) {
+              ElMessage.error(t2('保存失败: 标注数据无法序列化（请复制诊断信息给开发）', 'Save failed: annotation data not serializable (please copy diagnostics)'));
+              try {
+                const cur = currentLabelImage.value;
+                const detail = [
+                  'JSON 序列化失败诊断信息：',
+                  `dataset_id=${labelConfig.dataset_id || ''}`,
+                  `image=${cur && cur.name ? cur.name : ''}`,
+                  `subset=${cur && cur.subset ? cur.subset : ''}`,
+                  `annotations_len=${Array.isArray(annotations) ? annotations.length : -1}`,
+                  `error=${e && e.message ? e.message : String(e)}`,
+                  ''
+                ].join('\n');
+                ElMessageBox.alert(`<pre style="white-space:pre-wrap; word-break:break-all; margin:0;">${detail}</pre>`, t2('保存失败', 'Save failed'), {
+                  dangerouslyUseHTMLString: true,
+                  confirmButtonText: t2('知道了', 'OK')
+                });
+              } catch (e2) {}
+              return false;
+            }
+
+            const fd = new FormData();
+            fd.append('dataset_id', labelConfig.dataset_id);
+            fd.append('annotations_json', annotationsJson);
+            fd.append('class_id', labelConfig.current_class_id !== null ? labelConfig.current_class_id : 0);
+            fd.append('val_split', labelConfig.val_split);
+            fd.append('width', annoImg.value.naturalWidth);
+            fd.append('height', annoImg.value.naturalHeight);
+            fd.append('image_name', currentLabelImage.value.name);
+            fd.append('subset', currentLabelImage.value.subset);
+
+            try {
+              await postForm('/annotation/save', fd);
+              ElMessage.success(t2('保存成功', 'Saved'));
+              try {
+                const saved = await getJSON(`/datasets/${labelConfig.dataset_id}/annotation/${currentLabelImage.value.subset}/${currentLabelImage.value.name}`);
+                const annsRaw = Array.isArray(saved) ? saved : [];
+                const anns = normalizeAnnotationsSource(annsRaw, getCurrentLabelSourceUrl());
+                currentLabelImage.value.annotations = anns;
+                setCurrentAnnotations(anns);
+                currentLabelImage.value.boxes = extractBoxesFromAnnotations(anns);
+                currentLabelImage.value.labeled = anns.length > 0;
+                labelState.savedSig = computeAnnotationsSig(anns);
+                labelState.dirty = false;
+                if (anno) anno.setAnnotations(anns);
+                const li = labelImages.value.find(x => x && x.name === currentLabelImage.value.name && x.subset === currentLabelImage.value.subset);
+                if (li) {
+                  li.annotations = anns;
+                  li.boxes = currentLabelImage.value.boxes;
+                  li.labeled = currentLabelImage.value.labeled;
+                }
+              } catch (e) {
+                currentLabelImage.value.labeled = Array.isArray(currentLabelImage.value.annotations) && currentLabelImage.value.annotations.length > 0;
+                labelState.savedSig = computeAnnotationsSig(Array.isArray(currentLabelImage.value.annotations) ? currentLabelImage.value.annotations : []);
+                labelState.dirty = false;
+              }
+
+              const list = Array.isArray(labelImages.value) ? labelImages.value : [];
+              const curKey = thumbKey(currentLabelImage.value);
+              const idx = curKey ? list.findIndex(it => thumbKey(it) === curKey) : -1;
+              if (autoNext && idx >= 0 && idx < list.length - 1) {
+                nextAfterSave = list[idx + 1] || null;
+              }
+              return true;
+            } catch (e) {
+              ElMessage.error(t2('保存失败: ', 'Save failed: ') + (e.message || ''));
+              return false;
+            }
+          } finally {
+            labelState.saving = false;
+            if (nextAfterSave) {
+              setTimeout(() => {
+                try {
+                  gotoLabelImage(nextAfterSave, { autoSave: false });
+                } catch (e) {}
+              }, 0);
+            }
+          }
+        };
+
+        const deleteCurrentLabelImage = async () => {
+            const cur = currentLabelImage.value;
+            const datasetId = labelConfig.dataset_id;
+            if (!cur || !datasetId) return;
+            if (labelState.saving) return;
+
+            const dirtyHint = labelState.dirty ? t2('（当前有未保存标注，将一并丢弃）', ' (unsaved annotations will be discarded)') : '';
+            try {
+                await ElMessageBox.confirm(
+                    t2(
+                      `确定要删除图片 ${cur.name} 吗？该操作将同时删除对应标注文件，且不可恢复。${dirtyHint}`,
+                      `Delete image ${cur.name}? This also deletes its annotation file and cannot be undone.${dirtyHint}`
+                    ),
+                    t2('提示', 'Confirm'),
+                    { type: 'warning', confirmButtonText: t2('删除', 'Delete'), cancelButtonText: t2('取消', 'Cancel') }
+                );
+            } catch (e) {
+                return;
+            }
+
+            const list = Array.isArray(labelImages.value) ? [...labelImages.value] : [];
+            const curKey = thumbKey(cur);
+            const idx = curKey ? list.findIndex(it => thumbKey(it) === curKey) : -1;
+
+            try {
+                await deleteReq(`/datasets/${datasetId}/image/${encodeURIComponent(cur.subset)}/${encodeURIComponent(cur.name)}`);
+                ElMessage.success(t2('图片已删除', 'Image deleted'));
+            } catch (e) {
+                const msg = e && e.message ? e.message : '';
+                ElMessage.error(t2('删除失败', 'Delete failed') + (msg ? (': ' + msg) : ''));
+                return;
+            }
+
+            const nextList = list.filter(it => thumbKey(it) !== curKey);
+            labelImages.value = nextList;
+
+            currentLabelImage.value = null;
+            labelImageSrc.value = '';
+            labelState.dirty = false;
+            labelState.savedSig = '';
+            selectedAnnotation.value = null;
+            setCurrentAnnotations([]);
+            try {
+                if (anno) anno.setAnnotations([]);
+            } catch (e) {}
+
+            let next = null;
+            if (idx >= 0) {
+                next = nextList[idx] || nextList[idx - 1] || null;
+            } else {
+                next = nextList[0] || null;
+            }
+            if (next) {
+                loadLabelImage(next);
+            }
+        };
+
+        // Models State
+        const models = ref([]);
+        const currentModel = ref(null);
+        const datasetClassItems = ref([]);
+        const classes = ref([]);
+        const newClassesInput = ref('');
+
+        // ------------------ Common ------------------
+        const checkHealth = async () => {
+          try {
+            await getJSON('/infer/health');
+            healthStatus.value = true;
+          } catch (e) {
+            healthStatus.value = false;
+          }
+        };
+
+        const copyText = async (text) => {
+          if (!text) return;
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+              ElMessage.success(t2('已复制', 'Copied'));
+              return;
+            }
+          } catch (e) {}
+
+          try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            ElMessage.success(t2('已复制', 'Copied'));
+          } catch (e) {
+            ElMessage.error(t2('复制失败', 'Copy failed'));
+          }
+        };
+
+        const fetchLanIps = async () => {
+          try {
+            const res = await getJSON('/system/ips');
+            const ips = (res && res.ips) ? res.ips : [];
+            const protocol = window.location.protocol;
+            const port = window.location.port;
+            const candidates = ips.filter(ip => ip && !ip.startsWith('127.') && !ip.startsWith('169.254.'));
+            const pick = candidates.find(ip => ip.startsWith('192.168.'))
+              || candidates.find(ip => ip.startsWith('10.'))
+              || candidates.find(ip => ip.startsWith('172.'))
+              || candidates[0]
+              || '';
+            lanUrl.value = pick ? (port ? `${protocol}//${pick}:${port}` : `${protocol}//${pick}`) : '';
+          } catch (e) {
+            lanUrl.value = '';
+          }
+        };
+
+        // ------------------ Inference ------------------
+        const handleFileChange = (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            previewUrl.value = URL.createObjectURL(file);
+            inferResult.value = null;
+          }
+        };
+
+        const updatePreviewDisplaySize = () => {
+          try {
+            if (!previewImg.value) return;
+            const rect = previewImg.value.getBoundingClientRect();
+            imgDisplaySize.w = rect.width;
+            imgDisplaySize.h = rect.height;
+          } catch (e) {}
+        };
+
+        let updatePreviewDisplaySizeRaf = 0;
+        const scheduleUpdatePreviewDisplaySize = () => {
+          try {
+            if (updatePreviewDisplaySizeRaf) cancelAnimationFrame(updatePreviewDisplaySizeRaf);
+            updatePreviewDisplaySizeRaf = requestAnimationFrame(() => {
+              updatePreviewDisplaySizeRaf = 0;
+              updatePreviewDisplaySize();
+            });
+          } catch (e) {
+            updatePreviewDisplaySize();
+          }
+        };
+
+        let previewResizeObserver = null;
+        const bindPreviewResizeObserver = () => {
+          try {
+            if (!window.ResizeObserver) return;
+            if (!previewResizeObserver) {
+              previewResizeObserver = new ResizeObserver(() => scheduleUpdatePreviewDisplaySize());
+            }
+            previewResizeObserver.disconnect();
+            if (imgContainer.value) previewResizeObserver.observe(imgContainer.value);
+            if (previewImg.value) previewResizeObserver.observe(previewImg.value);
+          } catch (e) {}
+        };
+
+        const onImageLoad = (e) => {
+          imgNaturalSize.w = e.target.naturalWidth;
+          imgNaturalSize.h = e.target.naturalHeight;
+          nextTick(() => scheduleUpdatePreviewDisplaySize());
+        };
+
+        const runInference = async () => {
+          const file = fileInput.value.files[0];
+          if (!file) return ElMessage.warning(t2('请先上传文件', 'Please upload a file first'));
+          
+          inferLoading.value = true;
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('conf', inferConfig.conf);
+          fd.append('iou', inferConfig.iou);
+          fd.append('max_det', inferConfig.max_det);
+
+          try {
+            const res = await postForm('/infer/image', fd);
+            inferResult.value = res;
+            ElMessage.success(t2('识别完成', 'Done'));
+          } catch (e) {
+            ElMessage.error(t2('识别失败: ', 'Inference failed: ') + (e && e.message ? e.message : ''));
+          } finally {
+            inferLoading.value = false;
+          }
+        };
+
+        const inferModelTag = computed(() => {
+          const r = inferResult.value;
+          if (!r) return '';
+          const src = r.model_source ? String(r.model_source) : '';
+          const vid = r.model_version_id ? String(r.model_version_id) : '';
+          if (src === 'published' && vid) return t2(`识别模型：${vid}`, `Model: ${vid}`);
+          if (src === 'default') return t2('识别模型：默认(yolov8n)', 'Model: default (yolov8n)');
+          return '';
+        });
+
+        const displayBoxes = computed(() => {
+          if (!inferResult.value || !inferResult.value.boxes) return [];
+          const scaleX = imgDisplaySize.w / imgNaturalSize.w;
+          const scaleY = imgDisplaySize.h / imgNaturalSize.h;
+          
+          return inferResult.value.boxes.map(p => ({
+            ...p,
+            x: p.box[0] * scaleX,
+            y: p.box[1] * scaleY,
+            w: (p.box[2] - p.box[0]) * scaleX,
+            h: (p.box[3] - p.box[1]) * scaleY,
+            label: p.class,
+            conf: p.confidence.toFixed(2),
+            cls: p.class_id
+          }));
+        });
+
+        const colorMap = {};
+        const getColor = (clsId) => {
+           if (!colorMap[clsId]) {
+             const hue = (clsId * 137.508) % 360;
+             colorMap[clsId] = `hsl(${hue}, 70%, 50%)`;
+           }
+           return colorMap[clsId];
+        };
+
+        const resultSummary = computed(() => {
+            if (!inferResult.value || !inferResult.value.boxes) return [];
+            const counts = {};
+            inferResult.value.boxes.forEach(p => {
+                counts[p.class] = (counts[p.class] || 0) + 1;
+            });
+            return Object.keys(counts).map(k => ({ class: k, count: counts[k] })).sort((a, b) => b.count - a.count);
+        });
+
+        const downloadJSON = () => {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(inferResult.value, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "result.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        };
+
+        // ------------------ Datasets ------------------
+        const fetchDatasets = async () => {
+            loadingDatasets.value = true;
+            try {
+                const res = await getJSON('/datasets/list');
+                const items = Array.isArray(res && res.items) ? res.items : [];
+                datasets.value = [...items].sort((a, b) => {
+                  const ta = (a && typeof a.created_at === 'number') ? a.created_at : 0;
+                  const tb = (b && typeof b.created_at === 'number') ? b.created_at : 0;
+                  if (tb !== ta) return tb - ta;
+                  const ida = a && a.id ? String(a.id) : '';
+                  const idb = b && b.id ? String(b.id) : '';
+                  return idb.localeCompare(ida);
+                });
+            } finally {
+                loadingDatasets.value = false;
+            }
+        };
+
+        const triggerDatasetUpload = () => datasetInput.value.click();
+        
+        const openCreateDatasetDialog = async () => {
+             try {
+                 const { value } = await ElMessageBox.prompt(t2('请输入数据集名称 (ID)', 'Enter dataset ID'), t2('新建数据集', 'New Dataset'), {
+                     confirmButtonText: t2('创建', 'Create'),
+                     cancelButtonText: t2('取消', 'Cancel'),
+                     inputPattern: /^[A-Za-z0-9_-]{1,64}$/,
+                     inputErrorMessage: t2('格式无效，仅允许字母、数字、下划线和连字符', 'Invalid: only letters, numbers, _ and -')
+                 });
+                 if (value) {
+                     await postJSON('/datasets/create', { dataset_id: value });
+                     ElMessage.success(t2(`数据集 ${value} 创建成功`, `Dataset ${value} created`));
+                     fetchDatasets();
+                 }
+             } catch(e) {
+                 if (e !== 'cancel' && e.name !== 'CanceledError') {
+                     ElMessage.error(t2('创建失败: ', 'Create failed: ') + (e.message || e.body?.error || t2('未知错误', 'Unknown error')));
+                 }
+             }
+        };
+
+        const uploadDataset = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const fd = new FormData();
+            fd.append('file', file);
+            
+            const loading = ElMessage({
+                message: t2('上传并校验中...', 'Uploading & validating...'),
+                type: 'info',
+                duration: 0,
+                icon: 'Loading'
+            });
+            try {
+                await postForm('/datasets/upload', fd);
+                ElMessage.success(t2('上传成功', 'Uploaded'));
+                fetchDatasets();
+            } catch (e) {
+                ElMessage.error(t2('上传失败: ', 'Upload failed: ') + (e && e.message ? e.message : ''));
+            } finally {
+                loading.close();
+                e.target.value = '';
+            }
+        };
+        
+        const validateDataset = async (id) => {
+            try {
+                await getJSON(`/datasets/validate/${id}`);
+                ElMessage.success(t2('校验请求已发送', 'Validation requested'));
+                fetchDatasets();
+            } catch(e) { ElMessage.error(t2('校验失败: ', 'Validation failed: ') + (e && e.message ? e.message : '')); }
+        };
+
+        const deleteDataset = async (id) => {
+            try {
+                await ElMessageBox.confirm(
+                  t2(`确定要删除数据集 ${id} 吗？`, `Delete dataset ${id}?`),
+                  t2('提示', 'Confirm'),
+                  { type: 'warning', confirmButtonText: t2('继续', 'Continue'), cancelButtonText: t2('取消', 'Cancel') }
+                );
+                await ElMessageBox.confirm(
+                  t2('为防止误删，请再次确认删除该数据集', 'Please confirm again to avoid mistakes'),
+                  t2('二次确认', 'Confirm again'),
+                  { type: 'warning', confirmButtonText: t2('删除', 'Delete'), cancelButtonText: t2('取消', 'Cancel') }
+                );
+                await deleteReq(`/datasets/${id}`);
+                ElMessage.success(t2('删除成功', 'Deleted'));
+                fetchDatasets();
+            } catch(e) {
+                if (e === 'cancel' || e === 'close' || (e && e.name === 'CanceledError')) {
+                  return;
+                }
+                const msg = e && e.message ? e.message : '';
+                ElMessage.error(t2('删除失败', 'Delete failed') + (msg ? (': ' + msg) : ''));
+            }
+        };
+
+        const refreshDatasetClassManager = async () => {
+          const datasetId = datasetClassDialog.dataset_id;
+          if (!datasetId) return;
+          datasetClassDialog.loading = true;
+          try {
+            const res = await getJSON(`/datasets/${datasetId}/classes`);
+            const items = Array.isArray(res && res.items) ? res.items : [];
+            datasetClassDialog.items = items.filter(it => !(it && it.deleted));
+          } catch (e) {
+            ElMessage.error(t2('加载类别失败: ', 'Failed to load classes: ') + (e && e.message ? e.message : ''));
+          } finally {
+            datasetClassDialog.loading = false;
+          }
+        };
+
+        const openDatasetClassManager = async (datasetId) => {
+          datasetClassDialog.visible = true;
+          datasetClassDialog.dataset_id = datasetId ? String(datasetId) : '';
+          datasetClassDialog.new_name = '';
+          await refreshDatasetClassManager();
+        };
+
+        const addDatasetClass = async () => {
+          const datasetId = datasetClassDialog.dataset_id;
+          const name = (datasetClassDialog.new_name || '').trim();
+          if (!datasetId) return;
+          if (!name) return;
+          try {
+            await postJSON(`/datasets/${datasetId}/classes`, { name });
+            datasetClassDialog.new_name = '';
+            await refreshDatasetClassManager();
+            if (labelConfig.dataset_id && String(labelConfig.dataset_id) === String(datasetId)) {
+              await fetchClasses(labelConfig.dataset_id);
+            }
+            ElMessage.success(t2('类别添加成功', 'Class added'));
+          } catch (e) {
+            ElMessage.error(t2('添加失败: ', 'Add failed: ') + (e && e.message ? e.message : ''));
+          }
+        };
+
+        const renameDatasetClass = async (row) => {
+          const datasetId = datasetClassDialog.dataset_id;
+          if (!datasetId || !row) return;
+          const rid = row.id;
+          try {
+            const { value } = await ElMessageBox.prompt(t2('请输入新的类别名称', 'Enter new class name'), t2('改名', 'Rename'), {
+              confirmButtonText: t2('保存', 'Save'),
+              cancelButtonText: t2('取消', 'Cancel'),
+              inputValue: row.name || '',
+              inputPattern: /^.{1,64}$/,
+              inputErrorMessage: t2('名称不能为空，且长度不超过 64', 'Name is required and must be ≤ 64 chars')
+            });
+            const name = (value || '').trim();
+            if (!name) return;
+            await putJSON(`/datasets/${datasetId}/classes/${rid}`, { name });
+            await refreshDatasetClassManager();
+            if (labelConfig.dataset_id && String(labelConfig.dataset_id) === String(datasetId)) {
+              await fetchClasses(labelConfig.dataset_id);
+            }
+            ElMessage.success(t2('已更新', 'Updated'));
+          } catch (e) {
+            if (e === 'cancel' || (e && e.name === 'CanceledError')) return;
+            ElMessage.error(t2('更新失败: ', 'Update failed: ') + (e && e.message ? e.message : ''));
+          }
+        };
+
+        const deleteDatasetClass = async (row) => {
+          const datasetId = datasetClassDialog.dataset_id;
+          if (!datasetId || !row) return;
+          const rid = row.id;
+          try {
+            await ElMessageBox.confirm(t2(`确定要删除类别 "${row.name}" 吗？删除不会影响已标注的数据。`, `Delete class "${row.name}"? Existing annotations will not be changed.`), t2('提示', 'Confirm'), {
+              type: 'warning',
+              confirmButtonText: t2('删除', 'Delete'),
+              cancelButtonText: t2('取消', 'Cancel')
+            });
+            await deleteReq(`/datasets/${datasetId}/classes/${rid}`);
+            await refreshDatasetClassManager();
+            if (labelConfig.dataset_id && String(labelConfig.dataset_id) === String(datasetId)) {
+              await fetchClasses(labelConfig.dataset_id);
+            }
+            ElMessage.success(t2('已删除', 'Deleted'));
+          } catch (e) {
+            if (e === 'cancel' || (e && e.name === 'CanceledError')) return;
+            ElMessage.error(t2('删除失败: ', 'Delete failed: ') + (e && e.message ? e.message : ''));
+          }
+        };
+
+        const validDatasets = computed(() => datasets.value.filter(d => d.valid));
+
+        // ------------------ Training ------------------
+        const startTrain = async () => {
+            try {
+                const res = await postJSON('/train/start', trainConfig);
+                currentJob.value = { job_id: res.job_id, status: res.status };
+                bumpTrainPreviewNonce();
+                ElMessage.success(t2('训练任务已启动', 'Training started'));
+                pollJobStatus(res.job_id);
+            } catch(e) { ElMessage.error(t2('启动失败: ', 'Start failed: ') + (e && e.message ? e.message : '')); }
+        };
+
+        const stopTrain = async (id) => {
+             try {
+                await postJSON(`/train/stop/${id}`, {});
+                ElMessage.info(t2('已请求停止', 'Stop requested'));
+                refreshJobStatus();
+             } catch(e) { ElMessage.error(t2('操作失败: ', 'Operation failed: ') + (e && e.message ? e.message : '')); }
+        };
+
+        const refreshJobStatus = async () => {
+             if (currentJob.value) pollJobStatus(currentJob.value.job_id);
+        };
+
+        const pollJobStatus = async (id) => {
+             try {
+                 const res = await getJSON(`/train/status/${id}`);
+                 currentJob.value = res;
+                 bumpTrainPreviewNonce();
+                 if (res && res.status === 'completed') {
+                   fetchModels();
+                 }
+             } catch(e) { }
+        };
+
+        const fetchCurrentTrain = async () => {
+          try {
+            const res = await getJSON('/train/current');
+            if (res && res.status && res.status !== 'none' && res.job_id) {
+              currentJob.value = res;
+              bumpTrainPreviewNonce();
+            }
+          } catch (e) {}
+        };
+
+        const jobStatusText = computed(() => {
+          const s = currentJob.value ? currentJob.value.status : '';
+          if (s === 'running') return t2('训练中', 'Running');
+          if (s === 'completed') return t2('已完成', 'Completed');
+          if (s === 'stopped') return t2('已停止', 'Stopped');
+          if (s === 'failed') return t2('失败', 'Failed');
+          return s || '-';
+        });
+
+        const jobStatusType = computed(() => {
+          const s = currentJob.value ? currentJob.value.status : '';
+          if (s === 'running') return 'primary';
+          if (s === 'completed') return 'success';
+          if (s === 'stopped') return 'warning';
+          if (s === 'failed') return 'danger';
+          return 'info';
+        });
+
+        const jobProgressPercent = computed(() => {
+          const m = currentJob.value && currentJob.value.metrics ? currentJob.value.metrics : null;
+          if (!m) return 0;
+          const p = typeof m.progress === 'number' ? m.progress : null;
+          if (p === null) return 0;
+          const v = Math.round(p * 100);
+          return Math.max(0, Math.min(100, v));
+        });
+
+        const jobEpochsLine = computed(() => {
+          const m = currentJob.value && currentJob.value.metrics ? currentJob.value.metrics : null;
+          if (!m) return '';
+          const done = (m.epochs_done || 0);
+          const total = (m.epochs_total || 0);
+          return t2(`已完成 ${done}/${total} 轮`, `Done ${done}/${total} epochs`);
+        });
+
+        const jobErrorText = computed(() => {
+          const m = currentJob.value && currentJob.value.metrics ? currentJob.value.metrics : null;
+          if (!m) return '';
+          const tb = m.traceback ? String(m.traceback) : '';
+          const err = m.error ? String(m.error) : '';
+          return (tb || err || '').trim();
+        });
+
+        const formatSeconds = (secs) => {
+          if (secs === null || secs === undefined) return '-';
+          const n = Math.max(0, Math.floor(Number(secs)));
+          const h = Math.floor(n / 3600);
+          const m = Math.floor((n % 3600) / 60);
+          const s = n % 60;
+          if (uiLang.value === 'en') {
+            if (h > 0) return `${h}h ${m}m ${s}s`;
+            if (m > 0) return `${m}m ${s}s`;
+            return `${s}s`;
+          }
+          if (h > 0) return `${h}小时${m}分${s}秒`;
+          if (m > 0) return `${m}分${s}秒`;
+          return `${s}秒`;
+        };
+
+        const jobEtaText = computed(() => {
+          const m = currentJob.value && currentJob.value.metrics ? currentJob.value.metrics : null;
+          if (!m) return '-';
+          if (currentJob.value.status === 'completed') return uiLang.value === 'en' ? '0s' : '0秒';
+          return formatSeconds(m.eta_seconds);
+        });
+
+        const jobDeviceText = computed(() => {
+          const m = currentJob.value && currentJob.value.metrics ? currentJob.value.metrics : null;
+          const d = m && m.device ? String(m.device) : '';
+          if (!d) return '-';
+          if (d === 'cpu') return 'CPU';
+          if (/^\d+(,\d+)*$/.test(d)) return `GPU (${d})`;
+          return d;
+        });
+
+        // ------------------ Models ------------------
+        const fetchModels = async () => {
+            const res = await getJSON('/models/list');
+            const items = Array.isArray(res && res.items) ? res.items : [];
+            models.value = [...items].sort((a, b) => {
+              const ta = (a && typeof a.created_at === 'number') ? a.created_at : 0;
+              const tb = (b && typeof b.created_at === 'number') ? b.created_at : 0;
+              if (tb !== ta) return tb - ta;
+              const ida = a && a.version_id ? String(a.version_id) : '';
+              const idb = b && b.version_id ? String(b.version_id) : '';
+              return idb.localeCompare(ida);
+            });
+            const cur = await getJSON('/models/current');
+            currentModel.value = cur;
+        };
+
+        const publishModel = async (versionId) => {
+             try {
+                 await postJSON('/models/publish', { version_id: versionId });
+                 ElMessage.success(t2(`版本 ${versionId} 已上线`, `Version ${versionId} is now online`));
+                 inferResult.value = null;
+                 fetchModels();
+             } catch(e) { ElMessage.error(t2('发布失败: ', 'Publish failed: ') + (e && e.message ? e.message : '')); }
+        };
+
+        const deleteModel = async (versionId) => {
+          const vid = versionId ? String(versionId) : '';
+          if (!vid) return;
+          try {
+            await ElMessageBox.confirm(
+              t2(`确定要删除模型版本 "${vid}" 吗？删除后无法恢复。`, `Delete model version "${vid}"? This cannot be undone.`),
+              t2('提示', 'Confirm'),
+              { confirmButtonText: t2('确定', 'OK'), cancelButtonText: t2('取消', 'Cancel'), type: 'warning' }
+            );
+          } catch (e) {
+            return;
+          }
+
+          try {
+            await postJSON('/models/delete', { version_id: vid });
+            ElMessage.success(t2(`版本 ${vid} 已删除`, `Version ${vid} deleted`));
+            fetchModels();
+          } catch (e) {
+            ElMessage.error(t2('删除失败: ', 'Delete failed: ') + (e && e.message ? e.message : ''));
+          }
+        };
+
+        const fetchClasses = async (datasetId = '') => {
+             const dsid = datasetId ? String(datasetId) : '';
+             if (!dsid) {
+               classes.value = [];
+               datasetClassItems.value = [];
+               labelConfig.current_class_id = null;
+               return;
+             }
+             const res = await getJSON(`/datasets/${dsid}/classes`);
+             const items = Array.isArray(res && res.items) ? res.items : [];
+             datasetClassItems.value = items;
+             classes.value = items.map(it => it && it.name ? String(it.name) : '');
+             const activeIds = items.filter(it => it && !it.deleted).map(it => Number(it.id)).filter(x => Number.isFinite(x) && x >= 0);
+             const hasActive = activeIds.length > 0;
+             const cur = labelConfig.current_class_id;
+             const last = readLastClassId();
+             const curNum = cur === null || cur === undefined ? null : Number(cur);
+             const lastNum = last === null || last === undefined ? null : Number(last);
+             if (!hasActive) {
+               labelConfig.current_class_id = null;
+               return;
+             }
+             const isValidActive = (id) => Number.isFinite(Number(id)) && activeIds.includes(Number(id));
+             if (!isValidActive(curNum)) {
+               if (isValidActive(lastNum)) {
+                 labelConfig.current_class_id = Number(lastNum);
+               } else {
+                 labelConfig.current_class_id = activeIds.sort((a, b) => a - b)[0];
+               }
+             }
+        };
+
+        const classOptions = computed(() => {
+          const items = Array.isArray(datasetClassItems.value) ? datasetClassItems.value : [];
+          const active = items.filter(it => it && !it.deleted);
+          const idToName = new Map();
+          for (const it of items) {
+            if (!it) continue;
+            const id = Number(it.id);
+            if (!Number.isFinite(id) || id < 0) continue;
+            const name = it.name ? String(it.name) : '';
+            idToName.set(id, name);
+          }
+          const activeIds = active.map(it => Number(it.id)).filter(x => Number.isFinite(x) && x >= 0);
+          const order = safeReadJSON(LS_LABEL_CLASS_ORDER, []);
+          const seen = new Set();
+          const ids = [];
+          for (const x of order) {
+            const i = Number(x);
+            if (Number.isFinite(i) && activeIds.includes(i) && !seen.has(i)) {
+              seen.add(i);
+              ids.push(i);
+            }
+          }
+          const rest = activeIds.filter(i => !seen.has(i)).sort((a, b) => a - b);
+          for (const i of rest) ids.push(i);
+          return ids.map(i => ({ id: i, name: idToName.get(i) || `class_${i}` }));
+        });
+
+        const filteredClassOptions = computed(() => {
+          const list = Array.isArray(classOptions.value) ? classOptions.value : [];
+          const q = String(labelUi.classSearch || '').trim().toLowerCase();
+          if (!q) return list;
+          return list.filter((opt) => {
+            const name = opt && opt.name ? String(opt.name) : '';
+            return name.toLowerCase().includes(q) || String(opt.id).includes(q);
+          });
+        });
+
+        const selectLabelClass = async (classId) => {
+          const cid = Number(classId);
+          if (!Number.isFinite(cid)) return;
+          if (Number(labelConfig.current_class_id) === cid) return;
+          labelConfig.current_class_id = cid;
+          try {
+            await onLabelClassChange(cid);
+          } catch (e) {}
+        };
+
+        const updateClasses = async () => {
+            try {
+                const list = JSON.parse(newClassesInput.value);
+                if (!Array.isArray(list)) throw new Error(t2('必须是数组', 'Must be an array'));
+                await postJSON('/classes', { classes: list });
+                ElMessage.success(t2('类别更新成功', 'Classes updated'));
+                fetchClasses(labelConfig.dataset_id);
+            } catch(e) { ElMessage.error(t2('格式错误或更新失败', 'Invalid format or update failed')); }
+        };
+        
+        const formatDate = (ts) => {
+             if (!ts) return '-';
+             return new Date(ts * 1000).toLocaleString();
+        };
+
+        const showCreateDatasetDialog = () => {
+             createDatasetVisible.value = true;
+             createDatasetForm.dataset_id = '';
+             createDatasetForm.val_split = 0.2;
+        };
+
+        const createDatasetSubmit = async () => {
+             const id = createDatasetForm.dataset_id;
+             if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) {
+                 ElMessage.error(t2('数据集ID格式无效', 'Invalid dataset ID'));
+                 return;
+             }
+             try {
+                 await postJSON('/datasets/create', { dataset_id: createDatasetForm.dataset_id, val_split: createDatasetForm.val_split });
+                 ElMessage.success(t2(`数据集 ${id} 创建成功`, `Dataset ${id} created`));
+                 createDatasetVisible.value = false;
+                 fetchDatasets();
+             } catch(e) {
+                 ElMessage.error(t2('创建失败: ', 'Create failed: ') + (e.message || e.body?.error || t2('未知错误', 'Unknown error')));
+             }
+        };
+
+        // ------------------ Init ------------------
+        const onLabelCanvasScroll = () => {
+          updateDeleteOverlay();
+          updateClassOverlay();
+        };
+        const onWindowResizeForLabel = () => {
+          updateLabelFitSize();
+          updateDeleteOverlay();
+          updateClassOverlay();
+          scheduleRebuildAnno();
+        };
+        let labelCanvasScrollBound = false;
+
+        const bindLabelCanvasScroll = () => {
+          try {
+            if (labelCanvasScrollBound) return;
+            if (!labelCanvasRef.value) return;
+            labelCanvasRef.value.addEventListener('scroll', onLabelCanvasScroll, { passive: true });
+            labelCanvasScrollBound = true;
+          } catch (e) {}
+        };
+
+        const unbindLabelCanvasScroll = () => {
+          try {
+            if (!labelCanvasScrollBound) return;
+            if (!labelCanvasRef.value) return;
+            labelCanvasRef.value.removeEventListener('scroll', onLabelCanvasScroll);
+            labelCanvasScrollBound = false;
+          } catch (e) {}
+        };
+
+        const _isEditableElementForHotkey = (el) => {
+          try {
+            if (!el) return false;
+            if (el.isContentEditable) return true;
+            const tag = String(el.tagName || '').toUpperCase();
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+            if (typeof el.getAttribute === 'function') {
+              const role = el.getAttribute('role');
+              if (role === 'textbox') return true;
+            }
+            if (typeof el.closest === 'function') {
+              if (el.closest('input,textarea,select,[contenteditable=""],[contenteditable="true"],[role="textbox"]')) return true;
+            }
+          } catch (e) {}
+          return false;
+        };
+
+        const _switchLabelImageByDelta = (delta) => {
+          const list = Array.isArray(labelImages.value) ? labelImages.value : [];
+          if (list.length === 0) return;
+          const curKey = thumbKey(currentLabelImage.value);
+          let idx = -1;
+          if (curKey) idx = list.findIndex((it) => thumbKey(it) === curKey);
+          let nextIdx = idx + delta;
+          if (idx < 0) nextIdx = delta > 0 ? 0 : list.length - 1;
+          if (nextIdx < 0 || nextIdx >= list.length) return;
+          const next = list[nextIdx];
+          if (!next) return;
+          gotoLabelImage(next);
+        };
+
+        const onWindowKeyDownForLabelGallery = (e) => {
+          try {
+            if (!e) return;
+            if (e.defaultPrevented) return;
+            if (e.repeat) return;
+            if (activeTab.value !== 'labeling') return;
+            if (_isEditableElementForHotkey(e.target) || _isEditableElementForHotkey(document.activeElement)) return;
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')) {
+              e.preventDefault();
+              e.stopPropagation();
+              saveLabeling();
+              return;
+            }
+            if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
+              e.preventDefault();
+              e.stopPropagation();
+              saveLabeling();
+              return;
+            }
+            if (e.key === 'ArrowLeft') {
+              e.preventDefault();
+              e.stopPropagation();
+              _switchLabelImageByDelta(-1);
+              return;
+            }
+            if (e.key === 'ArrowRight') {
+              e.preventDefault();
+              e.stopPropagation();
+              _switchLabelImageByDelta(1);
+              return;
+            }
+          } catch (e2) {}
+        };
+
+        onMounted(() => {
+            getJSON('/app/version').then((r) => {
+              try {
+                const v = r && r.version ? String(r.version) : '';
+                if (v) appVersion.value = v;
+              } catch (e) {}
+            }).catch(() => {});
+            checkHealth();
+            fetchDatasets();
+            fetchModels();
+            fetchClasses(labelConfig.dataset_id);
+            fetchLanIps();
+            fetchCurrentTrain();
+            bindAnnoAutoCommit();
+            bindDraftBoxTracker();
+
+            setInterval(() => {
+              if (currentJob.value && currentJob.value.job_id && (currentJob.value.status === 'running' || currentJob.value.status === 'queued')) {
+                pollJobStatus(currentJob.value.job_id);
+              } else if (!currentJob.value) {
+                fetchCurrentTrain();
+              }
+            }, 2000);
+
+            window.addEventListener('resize', scheduleUpdatePreviewDisplaySize);
+
+            window.addEventListener('resize', onWindowResizeForLabel);
+            window.addEventListener('keydown', onWindowKeyDownForLabelGallery, true);
+            bindLabelCanvasScroll();
+        });
+
+        watch(
+          () => previewUrl.value,
+          () => {
+            nextTick(() => {
+              bindPreviewResizeObserver();
+              scheduleUpdatePreviewDisplaySize();
+            });
+          }
+        );
+
+        watch(() => labelConfig.current_class_id, (val) => {
+          const n = Number(val);
+          if (!Number.isFinite(n)) return;
+          writeLastClassId(n);
+          const prevOrder = safeReadJSON(LS_LABEL_CLASS_ORDER, []);
+          const nextOrder = [n, ...prevOrder.filter(x => x !== n)];
+          safeWriteJSON(LS_LABEL_CLASS_ORDER, nextOrder);
+        });
+
+        watch(() => labelImageSrc.value, () => {
+          hideDeleteOverlay();
+          setTimeout(() => updateLabelFitSize(), 0);
+          setTimeout(() => updateDeleteOverlay(), 0);
+          setTimeout(() => updateClassOverlay(), 0);
+        });
+
+        watch(() => selectedAnnotation.value, () => {
+          setTimeout(() => updateDeleteOverlay(), 0);
+        });
+
+        watch(
+          () => currentLabelImageClasses.value,
+          () => {
+            setTimeout(() => updateClassOverlay(), 0);
+          },
+          { deep: true }
+        );
+
+        watch(() => activeTab.value, (tab) => {
+          if (tab === 'labeling') {
+            setTimeout(() => {
+              bindLabelCanvasScroll();
+              updateLabelFitSize();
+              updateDeleteOverlay();
+              updateClassOverlay();
+            }, 0);
+          }
+        });
+
+        watch(() => labelView.zoom, (val) => {
+          const next = clampZoom(val);
+          if (next !== val) labelView.zoom = next;
+          writeLabelZoom(next);
+          nextTick(() => {
+            scheduleRebuildAnno();
+            hideDeleteOverlay();
+            updateDeleteOverlay();
+            updateClassOverlay();
+          });
+        });
+
+        onBeforeUnmount(() => {
+          unbindAnnoAutoCommit();
+          unbindDraftBoxTracker();
+          try {
+            window.removeEventListener('resize', onWindowResizeForLabel);
+          } catch (e) {}
+          try {
+            window.removeEventListener('resize', scheduleUpdatePreviewDisplaySize);
+          } catch (e) {}
+          try {
+            if (previewResizeObserver) previewResizeObserver.disconnect();
+          } catch (e) {}
+          try {
+            if (updatePreviewDisplaySizeRaf) cancelAnimationFrame(updatePreviewDisplaySizeRaf);
+          } catch (e) {}
+          try {
+            window.removeEventListener('keydown', onWindowKeyDownForLabelGallery, true);
+          } catch (e) {}
+          try {
+            unbindLabelCanvasScroll();
+          } catch (e) {}
+        });
+
+        watch(
+          () => thumbKey(currentLabelImage.value),
+          (k) => {
+            if (!k) return;
+            nextTick(() => revealSelectedThumb('auto'));
+          }
+        );
+
+        return {
+          activeTab, uiLang, setUiLang, t2, healthStatus, lanUrl, copyText, appVersion,
+          // Inference
+          fileInput, previewUrl, inferConfig, inferResult, inferLoading, runInference,
+          handleFileChange, displayBoxes, resultSummary, downloadJSON, getColor, inferModelTag,
+          onImageLoad, previewImg, imgContainer,
+          // Labeling
+          labelConfig, labelUi, labelView, labelImageSrc, annoImg, annoImgStyle,
+          labelCanvasRef, bottomStripRef, thumbKey, onThumbLoad, thumbBoxStyle,
+          labelImages, currentLabelImage, importInput,
+          labelImagesTotalCount, labelImagesLabeledCount, labelImagesProgressPercent,
+          currentLabelImageClasses,
+          labelState,
+          mobileUploadVisible, mobileUploadUrl, mobileQrRef, openMobileUpload, refreshMobileQr,
+          selectedAnnotation, deleteOverlay, classOverlay, deleteSelectedAnnotation,
+          onAnnoImgLoad, addNewClass, onLabelClassChange, selectLabelClass, filteredClassOptions, saveLabeling,
+          deleteCurrentLabelImage,
+          onLabelDatasetChange, refreshLabelImages, loadLabelImage, gotoLabelImage, triggerImportImages, importImages,
+          // Datasets
+          datasets, loadingDatasets, triggerDatasetUpload, uploadDataset, validateDataset, deleteDataset, datasetInput,
+          createDatasetVisible, createDatasetForm, showCreateDatasetDialog, createDatasetSubmit,
+          datasetClassDialog, openDatasetClassManager, refreshDatasetClassManager, addDatasetClass, renameDatasetClass, deleteDatasetClass,
+          // Training
+          trainConfig, validDatasets, startTrain, currentJob, stopTrain, refreshJobStatus,
+          jobStatusText, jobStatusType, jobProgressPercent, jobEpochsLine, jobEtaText, jobDeviceText, jobErrorText,
+          activeVersionId, runsUrl, latestMetricsText,
+          // Models
+          models, currentModel, publishModel, deleteModel, fetchModels, classes, classOptions, newClassesInput, updateClasses,
+          formatDate
+        };
+      }
+    });
+
+    for (const [key, component] of Object.entries(Icons)) {
+      app.component(key, component);
+    }
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

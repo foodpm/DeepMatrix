@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>手机拍照上传</title>
+  <style>
+    :root { --blue:#1677ff; --bg1:#0b0f17; --bg2:#111a2e; --card:rgba(255,255,255,0.06); --border:rgba(255,255,255,0.12); }
+    html, body { height: 100%; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: radial-gradient(1200px 800px at 20% 10%, var(--bg2), var(--bg1)); color: #fff; }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 14px; min-height: 100%; box-sizing: border-box; display:flex; flex-direction:column; gap: 12px; }
+    .shell { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px; box-shadow: 0 10px 28px rgba(0,0,0,0.28); }
+    .title { font-size: 16px; font-weight: 700; letter-spacing: .2px; }
+    .sub { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.68); }
+    button { appearance: none; border: 0; border-radius: 14px; padding: 12px 14px; font-size: 16px; cursor: pointer; width: 100%; }
+    button.primary { background: var(--blue); color: #fff; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .videoWrap { margin-top: 12px; border-radius: 16px; overflow: hidden; background:#000; border: 1px solid rgba(255,255,255,0.10); }
+    video { width: 100%; display: block; background: #000; aspect-ratio: 3 / 4; object-fit: cover; }
+    .shutterBar { position: sticky; bottom: 10px; padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); }
+    #btnShoot {
+      width: 76px;
+      height: 76px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.10);
+      border: 2px solid rgba(255,255,255,0.55);
+      margin: 0 auto;
+      display: none;
+      padding: 0;
+    }
+    #btnShoot::before {
+      content: '';
+      display:block;
+      width: 58px;
+      height: 58px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.92);
+      margin: 7px auto 0;
+    }
+    #btnShoot[disabled] { opacity: 0.55; }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(22px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.78);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 18px;
+      max-width: calc(100vw - 32px);
+      word-break: break-word;
+      display: none;
+      z-index: 9999;
+      border: 1px solid rgba(255,255,255,0.10);
+    }
+    .toast.ok { background: rgba(18, 68, 33, 0.92); }
+    .toast.err { background: rgba(78, 18, 18, 0.92); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="shell">
+      <div class="title">拍照上传</div>
+      <div class="sub">点击开启相机，拍照后自动上传</div>
+      <div style="height:12px;"></div>
+      <button id="btnStart" class="primary">开启相机</button>
+      <div class="videoWrap" id="videoWrap" style="display:none;">
+        <video id="video" playsinline autoplay muted></video>
+      </div>
+      <canvas id="canvas" style="display:none;"></canvas>
+      <input id="fileInput" type="file" accept="image/*" capture="environment" style="display:none;" />
+    </div>
+    <div class="shutterBar">
+      <button id="btnShoot" aria-label="拍照" disabled></button>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search || '');
+      const datasetId = (params.get('dataset_id') || '').trim();
+      const btnStart = document.getElementById('btnStart');
+      const btnShoot = document.getElementById('btnShoot');
+      const video = document.getElementById('video');
+      const videoWrap = document.getElementById('videoWrap');
+      const canvas = document.getElementById('canvas');
+      const fileInput = document.getElementById('fileInput');
+      const toastEl = document.getElementById('toast');
+
+      let toastTimer = 0;
+      const toast = (text, type) => {
+        if (!toastEl) return;
+        toastEl.textContent = text;
+        toastEl.className = 'toast' + (type ? ' ' + type : '');
+        toastEl.style.display = 'block';
+        if (toastTimer) window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => { toastEl.style.display = 'none'; }, 2200);
+      };
+
+      const uploadBlob = async (blob, filename) => {
+        if (!datasetId) {
+          toast('缺少参数，请从二维码入口进入', 'err');
+          return;
+        }
+        const fd = new FormData();
+        fd.append('files', blob, filename);
+        try {
+          const resp = await fetch(`/datasets/${encodeURIComponent(datasetId)}/import`, { method: 'POST', body: fd });
+          const text = await resp.text();
+          if (!resp.ok) {
+            toast('上传失败', 'err');
+            return;
+          }
+          toast('上传成功', 'ok');
+        } catch (e) {
+          toast('上传失败', 'err');
+        }
+      };
+
+      const ensureDatasetParam = () => {
+        if (!datasetId) {
+          btnStart.disabled = true;
+          btnShoot.disabled = true;
+          toast('缺少参数，请从二维码入口进入', 'err');
+        }
+      };
+
+      let mediaStream = null;
+
+      const stopStream = () => {
+        try {
+          if (mediaStream) {
+            const tracks = mediaStream.getTracks ? mediaStream.getTracks() : [];
+            for (const t of tracks) {
+              try { t.stop(); } catch (e) {}
+            }
+          }
+        } catch (e) {}
+        mediaStream = null;
+      };
+
+      const startCamera = async () => {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('浏览器不支持 getUserMedia');
+        }
+        stopStream();
+        const constraints = {
+          audio: false,
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        };
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = mediaStream;
+        await video.play();
+      };
+
+      const shootAndUpload = async () => {
+        const vw = video.videoWidth || 0;
+        const vh = video.videoHeight || 0;
+        if (!vw || !vh) {
+          toast('相机未就绪', 'err');
+          return;
+        }
+        canvas.width = vw;
+        canvas.height = vh;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, vw, vh);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (!blob) {
+          toast('拍照失败', 'err');
+          return;
+        }
+        await uploadBlob(blob, `mobile_${Date.now()}.jpg`);
+      };
+
+      const fallbackFileInput = () => {
+        try { fileInput.click(); } catch (e) {}
+        toast('已切换到系统相机', 'ok');
+      };
+
+      btnStart.addEventListener('click', async () => {
+        if (!datasetId) {
+          toast('缺少参数，请从二维码入口进入', 'err');
+          return;
+        }
+        btnStart.disabled = true;
+        try {
+          await startCamera();
+          if (videoWrap) videoWrap.style.display = '';
+          btnShoot.style.display = 'block';
+          btnShoot.disabled = false;
+          toast('相机已开启');
+        } catch (e) {
+          fallbackFileInput();
+        } finally {
+          btnStart.disabled = false;
+        }
+      });
+
+      btnShoot.addEventListener('click', async () => {
+        btnShoot.disabled = true;
+        btnShoot.style.transform = 'scale(0.98)';
+        try {
+          await shootAndUpload();
+        } finally {
+          btnShoot.style.transform = '';
+          btnShoot.disabled = false;
+        }
+      });
+
+      fileInput.addEventListener('change', async (ev) => {
+        const files = ev && ev.target && ev.target.files ? ev.target.files : null;
+        if (!files || !files.length) return;
+        const f = files[0];
+        if (!f) return;
+        btnStart.disabled = true;
+        await uploadBlob(f, f.name || `mobile_${Date.now()}.jpg`);
+        try { fileInput.value = ''; } catch (e) {}
+        btnStart.disabled = false;
+      });
+
+      window.addEventListener('pagehide', stopStream);
+      window.addEventListener('beforeunload', stopStream);
+      ensureDatasetParam();
+    })();
+  </script>
+</body>
+</html>

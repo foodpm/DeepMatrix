@@ -1,0 +1,16 @@
+{
+  "model_version_id": "yinliao-v4",
+  "dataset_id": "yinliao",
+  "created_at": 1770205966,
+  "train_config": {
+    "dataset_id": "yinliao",
+    "model_version": "v4",
+    "epochs": 100,
+    "batch": 8,
+    "imgsz": 1280,
+    "device": "0",
+    "optimizer": "AdamW",
+    "lr0": 0.001,
+    "augment": true
+  }
+}

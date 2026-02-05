@@ -1,0 +1,13 @@
+fastapi==0.115.5
+uvicorn==0.32.0
+pydantic==2.9.2
+python-multipart==0.0.9
+Pillow==10.4.0
+orjson==3.10.7
+torch
+torchvision
+ultralytics
+opencv-python
+pyyaml
+websockets
+pywebview

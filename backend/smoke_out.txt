@@ -1,0 +1,15 @@
+﻿BASE http://127.0.0.1:8002
+python : Traceback (most recent call last):
+所在位置 行:1 字符: 1
++ python scripts\smoke_dataset_classes.py 2>&1 | Out-File -Encoding utf ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "E:\code\货架商品识别v2\backend\scripts\smoke_dataset_classes.py", line 62, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "E:\code\货架商品识别v2\backend\scripts\smoke_dataset_classes.py", line 54, in main
+    assert items[1]["id"] == 1 and items[1]["name"] == "B" and items[1]["deleted"] is True, items[1]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'id': 1, 'name': 'A', 'deleted': True, 'created_at': 1770169544.800044, 'updated_at': 1770169544.8626711}
