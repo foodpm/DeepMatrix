@@ -5,7 +5,7 @@ import os
 from PyInstaller.building.datastruct import Tree
 from PyInstaller.utils.hooks import collect_submodules
 
-repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+repo_root = os.path.abspath(os.environ.get("GITHUB_WORKSPACE") or os.getcwd())
 backend_dir = os.path.join(repo_root, "backend")
 
 block_cipher = None
