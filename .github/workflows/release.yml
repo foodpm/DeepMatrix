@@ -91,7 +91,19 @@ jobs:
         run: |
           choco install nsis -y
           $outName = "DeepMatrix-$env:VERSION-Setup.exe"
-          makensis /DAPP_VERSION=$env:VERSION /DSOURCE_DIR=dist\\DeepMatrix /DOUTPUT_NAME=$outName installer\\windows\\DeepMatrix.nsi
+          $makensisCandidates = @(
+            "$env:ProgramFiles(x86)\\NSIS\\makensis.exe",
+            "$env:ProgramFiles\\NSIS\\makensis.exe",
+            "$env:ChocolateyInstall\\bin\\makensis.exe",
+            "C:\\ProgramData\\chocolatey\\bin\\makensis.exe"
+          )
+          $makensisPath = $makensisCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $makensisPath) {
+            $cmd = Get-Command makensis -ErrorAction SilentlyContinue
+            if ($cmd) { $makensisPath = $cmd.Source }
+          }
+          if (-not $makensisPath) { throw "makensis.exe not found after installing NSIS" }
+          & $makensisPath /DAPP_VERSION=$env:VERSION /DSOURCE_DIR=dist\\DeepMatrix /DOUTPUT_NAME=$outName installer\\windows\\DeepMatrix.nsi
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           Move-Item $outName artifacts\\DeepMatrix-$env:VERSION-$env:RUNNER_OS-${{ matrix.platform }}.exe
 
