@@ -80,13 +80,13 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean packaging/pyinstaller/DeepMatrix.spec
+          pyinstaller --noconfirm --clean --distpath dist --workpath build packaging/pyinstaller/DeepMatrix.spec
 
       - name: Build (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          pyinstaller --noconfirm --clean packaging/pyinstaller/DeepMatrix-mac.spec
+          pyinstaller --noconfirm --clean --distpath dist --workpath build packaging/pyinstaller/DeepMatrix-mac.spec
 
       - name: Create installer (Windows)
         if: runner.os == 'Windows'
