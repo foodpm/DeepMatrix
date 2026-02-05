@@ -97,6 +97,9 @@ jobs:
             refreshenv | Out-Null
           }
 
+          $pf = $env:ProgramFiles
+          $pf86 = ${env:ProgramFiles(x86)}
+
           $nsisDirs = @(
             "C:\\Program Files (x86)\\NSIS",
             "C:\\Program Files\\NSIS",
@@ -110,10 +113,10 @@ jobs:
 
           $outName = "DeepMatrix-$env:VERSION-Setup.exe"
           $makensisCandidates = @()
-          $makensisCandidates += "$env:ProgramFiles(x86)\\NSIS\\Bin\\makensis.exe"
-          $makensisCandidates += "$env:ProgramFiles(x86)\\NSIS\\makensis.exe"
-          $makensisCandidates += "$env:ProgramFiles\\NSIS\\Bin\\makensis.exe"
-          $makensisCandidates += "$env:ProgramFiles\\NSIS\\makensis.exe"
+          if ($pf86) { $makensisCandidates += "$pf86\\NSIS\\Bin\\makensis.exe" }
+          if ($pf86) { $makensisCandidates += "$pf86\\NSIS\\makensis.exe" }
+          if ($pf) { $makensisCandidates += "$pf\\NSIS\\Bin\\makensis.exe" }
+          if ($pf) { $makensisCandidates += "$pf\\NSIS\\makensis.exe" }
           $makensisCandidates += "$env:ChocolateyInstall\\bin\\makensis.exe"
           $makensisCandidates += "C:\\ProgramData\\chocolatey\\bin\\makensis.exe"
           $makensisCandidates += "C:\\ProgramData\\chocolatey\\lib\\nsis.install\\tools\\makensis.exe"
@@ -128,8 +131,8 @@ jobs:
 
           if (-not $makensisPath) {
             $roots = @()
-            if ($env:ProgramFiles) { $roots += $env:ProgramFiles }
-            if ($env:ProgramFiles(x86)) { $roots += $env:ProgramFiles(x86) }
+            if ($pf) { $roots += $pf }
+            if ($pf86) { $roots += $pf86 }
             $roots += "C:\\Program Files (x86)"
             $roots += "C:\\Program Files"
             $roots = $roots | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
