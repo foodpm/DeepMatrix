@@ -17,6 +17,9 @@ on:
 permissions:
   contents: write
 
+env:
+  WORKFLOW_REV: "2026-02-05-windows-nsis-fix"
+
 jobs:
   meta:
     runs-on: ubuntu-latest
@@ -91,6 +94,7 @@ jobs:
         run: |
           Write-Host "GITHUB_SHA=$env:GITHUB_SHA"
           Write-Host "VERSION=$env:VERSION"
+          Write-Host "WORKFLOW_REV=$env:WORKFLOW_REV"
           choco install nsis -y
           if ($env:ChocolateyInstall -and (Test-Path "$env:ChocolateyInstall\\helpers\\chocolateyProfile.psm1")) {
             Import-Module "$env:ChocolateyInstall\\helpers\\chocolateyProfile.psm1"
