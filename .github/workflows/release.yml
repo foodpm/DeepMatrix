@@ -51,6 +51,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       VERSION: ${{ needs.meta.outputs.version }}
+      MACOS_CERT_BASE64: ${{ secrets.MACOS_CERT_BASE64 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+      MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+      APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -101,12 +108,8 @@ jobs:
           pyinstaller --noconfirm --clean --distpath dist --workpath build packaging/pyinstaller/DeepMatrix-mac.spec
 
       - name: Prepare signing keychain (macOS)
-        if: runner.os == 'macOS' && secrets.MACOS_CERT_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' && secrets.MACOS_KEYCHAIN_PASSWORD != '' && secrets.MACOS_CODESIGN_IDENTITY != ''
+        if: runner.os == 'macOS' && env.MACOS_CERT_BASE64 != '' && env.MACOS_CERT_PASSWORD != '' && env.MACOS_KEYCHAIN_PASSWORD != '' && env.MACOS_CODESIGN_IDENTITY != ''
         shell: bash
-        env:
-          MACOS_CERT_BASE64: ${{ secrets.MACOS_CERT_BASE64 }}
-          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
           CERT_PATH="$RUNNER_TEMP/cert.p12"
@@ -120,10 +123,10 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
       - name: Codesign app (macOS)
-        if: runner.os == 'macOS' && secrets.MACOS_CODESIGN_IDENTITY != '' && secrets.MACOS_CERT_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' && secrets.MACOS_KEYCHAIN_PASSWORD != ''
+        if: runner.os == 'macOS' && env.MACOS_CODESIGN_IDENTITY != '' && env.MACOS_CERT_BASE64 != '' && env.MACOS_CERT_PASSWORD != '' && env.MACOS_KEYCHAIN_PASSWORD != ''
         shell: bash
         env:
-          CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          CODESIGN_IDENTITY: ${{ env.MACOS_CODESIGN_IDENTITY }}
         run: |
           APP_PATH="dist/DeepMatrix.app"
           ENTITLEMENTS="packaging/macos/entitlements.plist"
@@ -209,12 +212,8 @@ jobs:
           echo "DMG_OUT=$out" >> "$GITHUB_ENV"
 
       - name: Notarize and staple DMG (macOS)
-        if: runner.os == 'macOS' && secrets.APPLE_NOTARY_KEY_BASE64 != '' && secrets.APPLE_NOTARY_KEY_ID != '' && secrets.APPLE_NOTARY_ISSUER_ID != ''
+        if: runner.os == 'macOS' && env.APPLE_NOTARY_KEY_BASE64 != '' && env.APPLE_NOTARY_KEY_ID != '' && env.APPLE_NOTARY_ISSUER_ID != ''
         shell: bash
-        env:
-          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
-          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
         run: |
           KEY_PATH="$RUNNER_TEMP/notary-key.p8"
           echo "$APPLE_NOTARY_KEY_BASE64" | base64 -D > "$KEY_PATH"
