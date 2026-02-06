@@ -6,6 +6,7 @@ import threading
 import time
 import traceback
 import subprocess
+import tempfile
 
 import uvicorn
 
@@ -74,6 +75,50 @@ def _write_fatal_log(err: BaseException) -> str:
     return path
 
 
+def _open_fallback_stream():
+    try:
+        log_path = _fatal_log_path()
+        return open(log_path, "a", encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    try:
+        tmp_path = os.path.join(tempfile.gettempdir(), "DeepMatrix.log")
+        return open(tmp_path, "a", encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    try:
+        return open(os.devnull, "w")
+    except Exception:
+        return None
+
+
+def _ensure_stdio() -> None:
+    try:
+        stream = None
+        if sys.stderr is None or not hasattr(sys.stderr, "write"):
+            stream = _open_fallback_stream()
+            if stream is not None:
+                sys.stderr = stream
+        if sys.stdout is None or not hasattr(sys.stdout, "write"):
+            if stream is None:
+                stream = _open_fallback_stream()
+            if stream is not None:
+                sys.stdout = stream
+
+        if getattr(sys, "__stderr__", None) is None or not hasattr(getattr(sys, "__stderr__", None), "write"):
+            if stream is None:
+                stream = _open_fallback_stream()
+            if stream is not None:
+                sys.__stderr__ = stream
+        if getattr(sys, "__stdout__", None) is None or not hasattr(getattr(sys, "__stdout__", None), "write"):
+            if stream is None:
+                stream = _open_fallback_stream()
+            if stream is not None:
+                sys.__stdout__ = stream
+    except Exception:
+        pass
+
+
 def _show_fatal_dialog(message: str) -> None:
     if sys.platform == "darwin":
         try:
@@ -92,6 +137,7 @@ def _show_fatal_dialog(message: str) -> None:
 
 
 def main() -> int:
+    _ensure_stdio()
     bind_host = str(os.environ.get("SHELF_HOST") or "").strip() or "0.0.0.0"
     local_host = "127.0.0.1"
     preferred_port = int(os.environ.get("SHELF_PORT") or 8000)
@@ -102,7 +148,7 @@ def main() -> int:
     os.environ["SHELF_NO_BROWSER"] = "1"
     url = f"http://{local_host}:{port}/"
 
-    config = uvicorn.Config(app, host=bind_host, port=port, log_level="info")
+    config = uvicorn.Config(app, host=bind_host, port=port, log_level="info", use_colors=False)
     server = uvicorn.Server(config)
     server_thread = threading.Thread(target=server.run, daemon=True)
     server_thread.start()
@@ -135,7 +181,12 @@ if __name__ == "__main__":
         exit_code = int(main())
     except Exception as e:
         log_path = _write_fatal_log(e)
-        sys.stderr.write(f"DeepMatrix 启动失败：{e}\n日志：{log_path}\n")
+        try:
+            _ensure_stdio()
+            if getattr(sys, "stderr", None) is not None and hasattr(sys.stderr, "write"):
+                sys.stderr.write(f"DeepMatrix 启动失败：{e}\n日志：{log_path}\n")
+        except Exception:
+            pass
         _show_fatal_dialog(f"DeepMatrix 启动失败：{e}\n\n日志：{log_path}")
         raise SystemExit(1)
     raise SystemExit(exit_code)
